@@ -1,0 +1,77 @@
+using System.Text.Json.Serialization;
+
+namespace PosProSuite.Api.Models;
+
+public class TableEntity
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Status { get; set; } = "available";
+    public int Capacity { get; set; }
+    public decimal? OrderTotal { get; set; }
+    public int? ElapsedMinutes { get; set; }
+
+    [JsonPropertyName("orderId")]
+    public string? OrderId { get; set; }
+    public ICollection<OrderEntity> Orders { get; set; } = new List<OrderEntity>();
+}
+
+public class ProductEntity
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+    public string CategoryId { get; set; } = string.Empty;
+    public string? Subcategory { get; set; }
+    public string Image { get; set; } = string.Empty;
+    public bool Available { get; set; }
+}
+
+public class CategoryEntity
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Icon { get; set; } = string.Empty;
+    public ICollection<SubcategoryEntity> Subcategories { get; set; } = new List<SubcategoryEntity>();
+}
+
+public class SubcategoryEntity
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string CategoryId { get; set; } = string.Empty;
+    public CategoryEntity? Category { get; set; }
+}
+
+public class OrderEntity
+{
+    public int Id { get; set; }
+    public string OrderNumber { get; set; } = string.Empty;
+    public int TableId { get; set; }
+    public TableEntity? Table { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string Status { get; set; } = "Active";
+    public decimal TotalAmount { get; set; }
+    public ICollection<OrderItemEntity> Items { get; set; } = new List<OrderItemEntity>();
+}
+
+public class OrderItemEntity
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+    public OrderEntity? Order { get; set; }
+    public int ProductId { get; set; }
+    public ProductEntity? Product { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+}
+
+public class UserEntity
+{
+    public int Id { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
+    public string Role { get; set; } = "employee";
+}
+

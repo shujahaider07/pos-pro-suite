@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, ArrowLeft, UtensilsCrossed } from 'lucide-react';
-import { products, categories, tables, type CartItem, type Product } from '@/lib/mock-data';
+import type { CartItem, Product, Category, TableData } from '@/lib/mock-data';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import ProductCard from '@/components/pos/ProductCard';
 import CartPanel from '@/components/pos/CartPanel';
 import PaymentModal from '@/components/pos/PaymentModal';
@@ -12,25 +13,63 @@ import { toast } from 'sonner';
 const OrderScreen = () => {
   const { tableId } = useParams();
   const navigate = useNavigate();
-  const table = tables.find(t => t.id === Number(tableId)) || tables[0];
+  const location = useLocation() as Location & { state?: { table?: TableData } };
+
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
+
+  const { data: tableFromApi, isLoading: isTableLoading } = useQuery<TableData | null>({
+    queryKey: ['table', tableId],
+    queryFn: async () => {
+      if (!tableId) return null;
+      const response = await fetch(`${API_BASE_URL}/api/tables/${tableId}`);
+      if (!response.ok) {
+        throw new Error('Failed to load table');
+      }
+      return response.json();
+    },
+    enabled: !location.state?.table && !!tableId,
+  });
+
+  const table = (location.state?.table as TableData | undefined) ?? tableFromApi;
 
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [activeSubcategory, setActiveSubcategory] = useState<string | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [elapsed, setElapsed] = useState(table.elapsedMinutes || 0);
+  const [elapsed] = useState(table?.elapsedMinutes || 0);
   const [showPayment, setShowPayment] = useState(false);
   const [showKOT, setShowKOT] = useState(false);
+  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/api/categories`);
+      if (!response.ok) {
+        throw new Error('Failed to load categories');
+      }
+      return response.json();
+    },
+  });
+
+  const { data: products = [], isLoading: isProductsLoading } = useQuery<Product[]>({
+    queryKey: ['products', activeCategory, activeSubcategory, search],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (activeCategory && activeCategory !== 'all') params.append('categoryId', activeCategory);
+      if (activeSubcategory) params.append('subcategory', activeSubcategory);
+      if (search) params.append('search', search);
+
+      const queryString = params.toString();
+      const response = await fetch(`${API_BASE_URL}/api/products${queryString ? `?${queryString}` : ''}`);
+      if (!response.ok) {
+        throw new Error('Failed to load products');
+      }
+      return response.json();
+    },
+  });
 
   const currentCategory = categories.find(c => c.id === activeCategory);
-
-  const filteredProducts = useMemo(() => {
-    let list = products;
-    if (activeCategory !== 'all') list = list.filter(p => p.category === activeCategory);
-    if (activeSubcategory) list = list.filter(p => p.subcategory === activeSubcategory);
-    if (search) list = list.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
-    return list;
-  }, [activeCategory, activeSubcategory, search]);
 
   const addToCart = (product: Product) => {
     setCartItems(prev => {
@@ -52,6 +91,133 @@ const OrderScreen = () => {
   const removeItem = (productId: number) => {
     setCartItems(prev => prev.filter(i => i.product.id !== productId));
   };
+
+  const createOrderMutation = useMutation({
+    mutationFn: async () => {
+      if (!table) {
+        throw new Error('Table not loaded');
+      }
+      if (cartItems.length === 0) {
+        throw new Error('Cart is empty');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableId: table.id,
+          items: cartItems.map(item => ({
+            productId: item.product.id,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create order');
+      }
+
+      return response.json() as Promise<{ id: number }>;
+    },
+    onSuccess: data => {
+      setCurrentOrderId(data.id);
+      setShowPayment(true);
+      toast.success('Order created');
+    },
+    onError: () => {
+      toast.error('Failed to create order');
+    },
+  });
+
+  const completeOrderMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/complete`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to complete order');
+      }
+    },
+    onSuccess: () => {
+      toast.success('Payment completed!');
+      navigate('/tables');
+    },
+    onError: () => {
+      toast.error('Failed to complete order');
+    },
+  });
+
+  const holdOrderMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/hold`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to hold order');
+      }
+    },
+    onSuccess: () => {
+      toast.info('Order held');
+      navigate('/tables');
+    },
+    onError: () => {
+      toast.error('Failed to hold order');
+    },
+  });
+
+  const cancelOrderMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/cancel`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to cancel order');
+      }
+    },
+    onSuccess: () => {
+      setCartItems([]);
+      toast.error('Order cancelled');
+      navigate('/tables');
+    },
+    onError: () => {
+      toast.error('Failed to cancel order');
+    },
+  });
+
+  const handleProceedPayment = () => {
+    if (currentOrderId) {
+      setShowPayment(true);
+    } else {
+      createOrderMutation.mutate();
+    }
+  };
+
+  const handleHoldOrder = () => {
+    if (currentOrderId) {
+      holdOrderMutation.mutate(currentOrderId);
+    } else {
+      toast.info('Order held');
+      navigate('/tables');
+    }
+  };
+
+  const handleCancelOrder = () => {
+    if (currentOrderId) {
+      cancelOrderMutation.mutate(currentOrderId);
+    } else {
+      setCartItems([]);
+      toast.error('Order cancelled');
+      navigate('/tables');
+    }
+  };
+
+  if (!table || isTableLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background text-muted-foreground">
+        Loading table...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background">
@@ -124,16 +290,25 @@ const OrderScreen = () => {
 
         {/* Product Grid */}
         <div className="flex-1 overflow-y-auto pos-scrollbar p-6">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredProducts.map(product => (
-              <ProductCard key={product.id} product={product} onAdd={addToCart} />
-            ))}
-          </div>
-          {filteredProducts.length === 0 && (
+          {isProductsLoading ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
               <Search className="w-10 h-10 mb-3 opacity-20" />
-              <p className="text-sm">No items found</p>
+              <p className="text-sm">Loading items...</p>
             </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {products.map(product => (
+                  <ProductCard key={product.id} product={product} onAdd={addToCart} />
+                ))}
+              </div>
+              {products.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                  <Search className="w-10 h-10 mb-3 opacity-20" />
+                  <p className="text-sm">No items found</p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -146,9 +321,9 @@ const OrderScreen = () => {
           onUpdateQuantity={updateQuantity}
           onRemoveItem={removeItem}
           onPrintKOT={() => setShowKOT(true)}
-          onHoldOrder={() => { toast.info('Order held'); navigate('/tables'); }}
-          onProceedPayment={() => setShowPayment(true)}
-          onCancelOrder={() => { setCartItems([]); toast.error('Order cancelled'); navigate('/tables'); }}
+          onHoldOrder={handleHoldOrder}
+          onProceedPayment={handleProceedPayment}
+          onCancelOrder={handleCancelOrder}
           elapsedMinutes={elapsed}
         />
       </div>
@@ -157,7 +332,15 @@ const OrderScreen = () => {
         <PaymentModal
           total={cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * 1.07}
           onClose={() => setShowPayment(false)}
-          onComplete={() => { setShowPayment(false); toast.success('Payment completed!'); navigate('/tables'); }}
+          onComplete={() => {
+            if (currentOrderId) {
+              completeOrderMutation.mutate(currentOrderId);
+            } else {
+              toast.success('Payment completed!');
+              navigate('/tables');
+            }
+            setShowPayment(false);
+          }}
         />
       )}
 

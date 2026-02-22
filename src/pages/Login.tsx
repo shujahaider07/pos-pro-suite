@@ -15,6 +15,7 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,9 +25,29 @@ const Login = () => {
       return;
     }
     setIsLoading(true);
-    await new Promise(r => setTimeout(r, 1200));
-    login(email, password, role);
-    navigate(role === 'admin' ? '/admin' : '/tables');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          role,
+        }),
+      });
+
+      if (!response.ok) {
+        setError('Invalid credentials');
+        return;
+      }
+
+      login(email, password, role);
+      navigate(role === 'admin' ? '/admin' : '/tables');
+    } catch {
+      setError('Unable to connect to server');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { LogOut, UtensilsCrossed, LayoutGrid, Clock } from 'lucide-react';
-import { tables as mockTables } from '@/lib/mock-data';
+import type { TableData } from '@/lib/mock-data';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/pos-context';
 import TableCard from '@/components/pos/TableCard';
 
@@ -11,16 +12,29 @@ const Tables = () => {
   const navigate = useNavigate();
   const { userName, logout } = useAuth();
 
-  const filtered = filter === 'all' ? mockTables : mockTables.filter(t => t.status === filter);
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
+
+  const { data: tables = [], isLoading, isError } = useQuery<TableData[]>({
+    queryKey: ['tables'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/api/tables`);
+      if (!response.ok) {
+        throw new Error('Failed to load tables');
+      }
+      return response.json();
+    },
+  });
+
+  const filtered = filter === 'all' ? tables : tables.filter(t => t.status === filter);
 
   const counts = {
-    all: mockTables.length,
-    available: mockTables.filter(t => t.status === 'available').length,
-    occupied: mockTables.filter(t => t.status === 'occupied').length,
-    reserved: mockTables.filter(t => t.status === 'reserved').length,
+    all: tables.length,
+    available: tables.filter(t => t.status === 'available').length,
+    occupied: tables.filter(t => t.status === 'occupied').length,
+    reserved: tables.filter(t => t.status === 'reserved').length,
   };
 
-  const handleTableClick = (table: typeof mockTables[0]) => {
+  const handleTableClick = (table: TableData) => {
     navigate(`/order/${table.id}`, { state: { table } });
   };
 
@@ -81,11 +95,23 @@ const Tables = () => {
         </div>
 
         {/* Table Grid */}
-        <motion.div layout className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
-          {filtered.map((table, i) => (
-            <TableCard key={table.id} table={table} index={i} onClick={() => handleTableClick(table)} />
-          ))}
-        </motion.div>
+        {isLoading && (
+          <div className="flex items-center justify-center py-20 text-muted-foreground">
+            Loading tables...
+          </div>
+        )}
+        {isError && !isLoading && (
+          <div className="flex items-center justify-center py-20 text-destructive">
+            Failed to load tables
+          </div>
+        )}
+        {!isLoading && !isError && (
+          <motion.div layout className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+            {filtered.map((table, i) => (
+              <TableCard key={table.id} table={table} index={i} onClick={() => handleTableClick(table)} />
+            ))}
+          </motion.div>
+        )}
       </main>
     </div>
   );

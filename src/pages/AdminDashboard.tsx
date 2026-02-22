@@ -1,20 +1,61 @@
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, BarChart3, Award } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { dashboardStats } from '@/lib/mock-data';
+import { useQuery } from '@tanstack/react-query';
 import AdminSidebar from '@/components/pos/AdminSidebar';
 
-const statCards = [
-  { label: "Today's Revenue", value: `₹${dashboardStats.todayRevenue.toLocaleString()}`, icon: DollarSign, change: '+12.5%', up: true, gradient: 'gradient-primary' },
-  { label: 'Weekly Revenue', value: `₹${dashboardStats.weeklyRevenue.toLocaleString()}`, icon: TrendingUp, change: '+8.2%', up: true, gradient: 'gradient-success' },
-  { label: 'Monthly Revenue', value: `₹${(dashboardStats.monthlyRevenue / 100000).toFixed(1)}L`, icon: BarChart3, change: '+15.3%', up: true, gradient: 'gradient-warning' },
-  { label: 'Total Orders', value: dashboardStats.totalOrders.toString(), icon: ShoppingBag, change: '+23', up: true, gradient: 'gradient-danger' },
-  { label: 'Avg Order Value', value: `₹${dashboardStats.avgOrderValue}`, icon: Award, change: '-2.1%', up: false, gradient: 'gradient-primary' },
-];
+interface DashboardStats {
+  todayRevenue: number;
+  weeklyRevenue: number;
+  monthlyRevenue: number;
+  totalOrders: number;
+  avgOrderValue: number;
+  topItems: { name: string; quantity: number; revenue: number }[];
+  salesTrend: { day: string; sales: number }[];
+  categoryPerformance: { name: string; value: number }[];
+}
 
 const COLORS = ['hsl(234,89%,56%)', 'hsl(152,69%,40%)', 'hsl(38,92%,50%)', 'hsl(0,72%,56%)', 'hsl(280,60%,55%)'];
 
 const AdminDashboard = () => {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
+
+  const { data, isLoading, isError } = useQuery<DashboardStats>({
+    queryKey: ['dashboard'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/api/dashboard`);
+      if (!response.ok) {
+        throw new Error('Failed to load dashboard');
+      }
+      return response.json();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <AdminSidebar>
+        <div className="p-8 text-muted-foreground">Loading dashboard...</div>
+      </AdminSidebar>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <AdminSidebar>
+        <div className="p-8 text-destructive">Failed to load dashboard data</div>
+      </AdminSidebar>
+    );
+  }
+
+  const dashboardStats = data;
+
+  const statCards = [
+    { label: "Today's Revenue", value: `₹${dashboardStats.todayRevenue.toLocaleString()}`, icon: DollarSign, change: '+12.5%', up: true, gradient: 'gradient-primary' },
+    { label: 'Weekly Revenue', value: `₹${dashboardStats.weeklyRevenue.toLocaleString()}`, icon: TrendingUp, change: '+8.2%', up: true, gradient: 'gradient-success' },
+    { label: 'Monthly Revenue', value: `₹${(dashboardStats.monthlyRevenue / 100000).toFixed(1)}L`, icon: BarChart3, change: '+15.3%', up: true, gradient: 'gradient-warning' },
+    { label: 'Total Orders', value: dashboardStats.totalOrders.toString(), icon: ShoppingBag, change: '+23', up: true, gradient: 'gradient-danger' },
+    { label: 'Avg Order Value', value: `₹${dashboardStats.avgOrderValue}`, icon: Award, change: '-2.1%', up: false, gradient: 'gradient-primary' },
+  ];
   return (
     <AdminSidebar>
       <div className="p-8">
