@@ -38,7 +38,7 @@ const KOTReceipt = ({ table, items, onClose }: KOTReceiptProps) => {
 
         <div className="p-6 font-mono text-sm space-y-3">
           <div className="text-center space-y-1">
-            <p className="font-bold text-base">🍽️ RestoPOS</p>
+            <p className="font-bold text-base">🍽️ SYR POS</p>
             <p className="text-muted-foreground text-xs">Kitchen Order Ticket</p>
             <div className="border-t border-dashed my-2" />
           </div>
@@ -72,7 +72,7 @@ const KOTReceipt = ({ table, items, onClose }: KOTReceiptProps) => {
 
         <div className="p-4 border-t flex gap-2">
           <button
-            onClick={() => { toast.success('KOT sent to kitchen'); onClose(); }}
+            onClick={() => { window.print(); toast.success('KOT sent to kitchen'); onClose(); }}
             className="flex-1 h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2"
           >
             <Printer className="w-4 h-4" /> Print & Send
@@ -130,7 +130,7 @@ export const BillReceipt = ({ table, items, orderNumber, onClose }: BillReceiptP
 
         <div className="p-6 font-mono text-sm space-y-3">
           <div className="text-center space-y-1">
-            <p className="font-bold text-base">🍽️ RestoPOS</p>
+            <p className="font-bold text-base">🍽️ SYR POS</p>
             <p className="text-muted-foreground text-xs">Customer Bill</p>
             <div className="border-t border-dashed my-2" />
           </div>

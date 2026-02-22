@@ -19,12 +19,13 @@ interface CartPanelProps {
   onHoldOrder: () => void;
   onProceedPayment: () => void;
   onCancelOrder: () => void;
+  onClearCart: () => void;
   elapsedMinutes: number;
 }
 
 const CartPanel = ({
   table, items, onUpdateQuantity, onRemoveItem,
-  onPrintKOT, onHoldOrder, onProceedPayment, onCancelOrder, elapsedMinutes,
+  onPrintKOT, onHoldOrder, onProceedPayment, onCancelOrder, onClearCart, elapsedMinutes,
 }: CartPanelProps) => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 
@@ -144,7 +145,10 @@ const CartPanel = ({
             <button onClick={onProceedPayment} className="h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity col-span-2">
               💳 Proceed to Payment
             </button>
-            <button onClick={onCancelOrder} className="h-11 rounded-xl border border-destructive/30 text-destructive font-semibold text-sm hover:bg-destructive/5 transition-colors col-span-2">
+            <button onClick={onClearCart} className="h-11 rounded-xl border text-sm font-semibold text-muted-foreground hover:bg-muted/60 transition-colors">
+              🧹 Clear Cart
+            </button>
+            <button onClick={onCancelOrder} className="h-11 rounded-xl border border-destructive/30 text-destructive font-semibold text-sm hover:bg-destructive/5 transition-colors">
               Cancel Order
             </button>
           </div>

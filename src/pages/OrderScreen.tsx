@@ -152,6 +152,11 @@ const OrderScreen = () => {
     setCartItems(prev => prev.filter(i => i.product.id !== productId));
   };
 
+  const clearCart = () => {
+    setCartItems([]);
+    toast.info('Cart cleared');
+  };
+
   type CreateOrderMode = 'payment' | 'hold';
 
   const updateOrderMutation = useMutation({
@@ -432,6 +437,7 @@ const OrderScreen = () => {
           onHoldOrder={handleHoldOrder}
           onProceedPayment={handleProceedPayment}
           onCancelOrder={handleCancelOrder}
+          onClearCart={clearCart}
           elapsedMinutes={elapsed}
         />
       </div>
@@ -440,17 +446,21 @@ const OrderScreen = () => {
         <PaymentModal
           total={cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0)}
           onClose={() => setShowPayment(false)}
-          onComplete={() => {
+          onPreviewBill={() => {
+            setShowBill(true);
+          }}
+          onConfirmPayment={() => {
             if (currentOrderId) {
               completeOrderMutation.mutate(currentOrderId, {
                 onSuccess: () => {
                   toast.success('Payment completed!');
-                  setShowBill(true);
+                },
+                onError: () => {
+                  toast.error('Failed to complete order');
                 },
               });
             } else {
               toast.success('Payment completed!');
-              setShowBill(true);
             }
             setShowPayment(false);
           }}

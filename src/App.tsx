@@ -17,7 +17,9 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const ProtectedRoute = ({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'admin' | 'employee' }) => {
-  const { isAuthenticated, role } = useAuth();
+  const { isAuthenticated, role, isReady } = useAuth();
+
+  if (!isReady) return null;
   if (!isAuthenticated) return <Navigate to="/" replace />;
   if (requiredRole && role !== requiredRole) return <Navigate to={role === 'admin' ? '/admin' : '/tables'} replace />;
   return <>{children}</>;

@@ -5,16 +5,16 @@ import { X, Banknote, CreditCard, QrCode, Loader2, CheckCircle2 } from 'lucide-r
 interface PaymentModalProps {
   total: number;
   onClose: () => void;
-  onComplete: () => void;
+  onPreviewBill: () => void;
+  onConfirmPayment: () => void;
 }
 
 type PaymentMethod = 'cash' | 'card' | 'qr';
 
-const PaymentModal = ({ total, onClose, onComplete }: PaymentModalProps) => {
+const PaymentModal = ({ total, onClose, onPreviewBill, onConfirmPayment }: PaymentModalProps) => {
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [cashAmount, setCashAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isComplete, setIsComplete] = useState(false);
 
   const grandTotal = Math.round(total);
   const change = Number(cashAmount) - grandTotal;
@@ -25,8 +25,7 @@ const PaymentModal = ({ total, onClose, onComplete }: PaymentModalProps) => {
     setIsProcessing(true);
     await new Promise(r => setTimeout(r, 1500));
     setIsProcessing(false);
-    setIsComplete(true);
-    setTimeout(onComplete, 1500);
+    onConfirmPayment();
   };
 
   const methods = [
@@ -47,16 +46,7 @@ const PaymentModal = ({ total, onClose, onComplete }: PaymentModalProps) => {
         animate={{ scale: 1, opacity: 1 }}
         className="bg-card rounded-2xl shadow-float w-full max-w-md mx-4 overflow-hidden"
       >
-        {isComplete ? (
-          <div className="p-12 text-center">
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 200 }}>
-              <CheckCircle2 className="w-20 h-20 text-success mx-auto mb-4" />
-            </motion.div>
-            <h3 className="text-xl font-bold">Payment Successful!</h3>
-            <p className="text-muted-foreground text-sm mt-2">Receipt is being generated...</p>
-          </div>
-        ) : (
-          <>
+        <>
             <div className="flex items-center justify-between p-5 border-b">
               <h3 className="font-bold text-lg">Payment</h3>
               <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors">
@@ -69,6 +59,14 @@ const PaymentModal = ({ total, onClose, onComplete }: PaymentModalProps) => {
                 <p className="text-sm text-muted-foreground">Grand Total</p>
                 <p className="text-3xl font-bold text-gradient-primary">₨{grandTotal.toLocaleString()}</p>
               </div>
+
+              <button
+                type="button"
+                onClick={onPreviewBill}
+                className="w-full h-10 rounded-xl border text-sm font-semibold"
+              >
+                Preview Bill
+              </button>
 
               {/* Methods */}
               <div className="flex gap-2">
@@ -139,7 +137,6 @@ const PaymentModal = ({ total, onClose, onComplete }: PaymentModalProps) => {
               </button>
             </div>
           </>
-        )}
       </motion.div>
     </motion.div>
   );

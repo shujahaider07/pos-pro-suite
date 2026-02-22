@@ -61,7 +61,7 @@ const Login = () => {
             <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
               <UtensilsCrossed className="w-5 h-5" />
             </div>
-            <span className="text-xl font-bold tracking-tight">RestoPOS</span>
+            <span className="text-xl font-bold tracking-tight">SYR POS</span>
           </div>
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.6 }}>
             <h1 className="text-4xl font-bold leading-tight mb-4">
@@ -71,7 +71,7 @@ const Login = () => {
               Streamline your operations with our enterprise-grade POS solution. Built for speed, designed for elegance.
             </p>
           </motion.div>
-          <p className="text-primary-foreground/40 text-sm">© 2026 RestoPOS. All rights reserved.</p>
+          <p className="text-primary-foreground/40 text-sm">© 2026 SYR POS. All rights reserved.</p>
         </div>
       </div>
 
@@ -87,7 +87,7 @@ const Login = () => {
             <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
               <UtensilsCrossed className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold tracking-tight">RestoPOS</span>
+            <span className="text-xl font-bold tracking-tight">SYR POS</span>
           </div>
 
           <h2 className="text-2xl font-bold mb-1">Welcome back</h2>

@@ -47,7 +47,7 @@ const Tables = () => {
             <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center">
               <UtensilsCrossed className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="font-bold text-lg">RestoPOS</span>
+            <span className="font-bold text-lg">SYR POS</span>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted text-sm">
