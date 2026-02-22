@@ -62,7 +62,7 @@ const TableCard = ({ table, index, onClick }: TableCardProps) => {
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Total</span>
-            <span className="font-bold text-foreground">₹{table.orderTotal?.toLocaleString()}</span>
+            <span className="font-bold text-foreground">₨{table.orderTotal?.toLocaleString()}</span>
           </div>
           <div className="flex items-center gap-1 text-muted-foreground text-xs">
             <Clock className="w-3 h-3" />

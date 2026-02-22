@@ -1,6 +1,14 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Minus, Plus, Trash2, Clock, ShoppingBag } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import type { CartItem, TableData } from '@/lib/mock-data';
+
+interface ChargeSettings {
+  taxEnabled: boolean;
+  taxPercent: number;
+  serviceEnabled: boolean;
+  servicePercent: number;
+}
 
 interface CartPanelProps {
   table: TableData;
@@ -18,9 +26,22 @@ const CartPanel = ({
   table, items, onUpdateQuantity, onRemoveItem,
   onPrintKOT, onHoldOrder, onProceedPayment, onCancelOrder, elapsedMinutes,
 }: CartPanelProps) => {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
+
+  const { data: chargeSettings } = useQuery<ChargeSettings>({
+    queryKey: ['charges'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/api/charges`);
+      if (!res.ok) throw new Error('Failed to load charges');
+      return res.json();
+    },
+  });
+
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
-  const tax = Math.round(subtotal * 0.05);
-  const serviceCharge = Math.round(subtotal * 0.02);
+  const taxRate = chargeSettings?.taxEnabled ? chargeSettings.taxPercent / 100 : 0;
+  const serviceRate = chargeSettings?.serviceEnabled ? chargeSettings.servicePercent / 100 : 0;
+  const tax = Math.round(subtotal * taxRate);
+  const serviceCharge = Math.round(subtotal * serviceRate);
   const grandTotal = subtotal + tax + serviceCharge;
 
   return (
@@ -61,7 +82,7 @@ const CartPanel = ({
                 <span className="text-2xl">{item.product.image}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{item.product.name}</p>
-                  <p className="text-xs text-muted-foreground">₹{item.product.price} each</p>
+                  <p className="text-xs text-muted-foreground">₨{item.product.price} each</p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -78,7 +99,7 @@ const CartPanel = ({
                     <Plus className="w-3 h-3" />
                   </button>
                 </div>
-                <span className="text-sm font-bold w-16 text-right">₹{item.product.price * item.quantity}</span>
+                <span className="text-sm font-bold w-16 text-right">₨{item.product.price * item.quantity}</span>
                 <button
                   onClick={() => onRemoveItem(item.product.id)}
                   className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
@@ -95,18 +116,22 @@ const CartPanel = ({
       {items.length > 0 && (
         <div className="border-t p-5 space-y-4">
           <div className="space-y-1.5 text-sm">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Subtotal</span><span>₹{subtotal.toLocaleString()}</span>
+            <div className="flex justify-between text-sm">
+              <span>Subtotal</span><span>₨{subtotal.toLocaleString()}</span>
             </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>Tax (5%)</span><span>₹{tax.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>Service (2%)</span><span>₹{serviceCharge.toLocaleString()}</span>
-            </div>
+            {chargeSettings?.taxEnabled && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Tax ({chargeSettings.taxPercent}%)</span><span>₨{tax.toLocaleString()}</span>
+              </div>
+            )}
+            {chargeSettings?.serviceEnabled && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Service ({chargeSettings.servicePercent}%)</span><span>₨{serviceCharge.toLocaleString()}</span>
+              </div>
+            )}
             <div className="flex justify-between font-bold text-lg pt-2 border-t">
               <span>Total</span>
-              <span className="text-gradient-primary">₹{grandTotal.toLocaleString()}</span>
+              <span className="text-gradient-primary">₨{grandTotal.toLocaleString()}</span>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">

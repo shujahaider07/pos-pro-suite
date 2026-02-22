@@ -67,7 +67,7 @@ const PaymentModal = ({ total, onClose, onComplete }: PaymentModalProps) => {
             <div className="p-5 space-y-5">
               <div className="text-center py-4 rounded-xl bg-accent">
                 <p className="text-sm text-muted-foreground">Grand Total</p>
-                <p className="text-3xl font-bold text-gradient-primary">₹{grandTotal.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-gradient-primary">₨{grandTotal.toLocaleString()}</p>
               </div>
 
               {/* Methods */}
@@ -103,14 +103,14 @@ const PaymentModal = ({ total, onClose, onComplete }: PaymentModalProps) => {
                         onClick={() => setCashAmount(String(amt))}
                         className="flex-1 py-2.5 rounded-xl border text-sm font-medium hover:border-primary/30 hover:bg-accent transition-all"
                       >
-                        ₹{amt}
+                        ₨{amt}
                       </button>
                     ))}
                   </div>
                   {change >= 0 && cashAmount && (
                     <div className="flex justify-between p-3 rounded-xl bg-success/10 text-success">
                       <span className="text-sm font-medium">Change</span>
-                      <span className="font-bold">₹{change.toLocaleString()}</span>
+                      <span className="font-bold">₨{change.toLocaleString()}</span>
                     </div>
                   )}
                 </div>

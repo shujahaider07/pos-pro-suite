@@ -16,6 +16,15 @@ public class TableEntity
     public ICollection<OrderEntity> Orders { get; set; } = new List<OrderEntity>();
 }
 
+public class ChargeSettingsEntity
+{
+    public int Id { get; set; }
+    public bool TaxEnabled { get; set; } = true;
+    public decimal TaxPercent { get; set; } = 5;
+    public bool ServiceEnabled { get; set; } = true;
+    public decimal ServicePercent { get; set; } = 2;
+}
+
 public class ProductEntity
 {
     public int Id { get; set; }

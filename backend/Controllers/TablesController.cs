@@ -5,6 +5,10 @@ using PosProSuite.Api.Models;
 
 namespace PosProSuite.Api.Controllers;
 
+public record TableCreateRequest(string Name, int Capacity);
+
+public record TableUpdateRequest(string Name, int Capacity);
+
 [ApiController]
 [Route("api/[controller]")]
 public class TablesController : ControllerBase
@@ -36,5 +40,82 @@ public class TablesController : ControllerBase
         }
 
         return Ok(table);
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<TableEntity>> CreateTable([FromBody] TableCreateRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest("Name is required");
+        }
+
+        if (request.Capacity <= 0)
+        {
+            return BadRequest("Capacity must be greater than zero");
+        }
+
+        TableEntity table = new()
+        {
+            Name = request.Name,
+            Capacity = request.Capacity,
+            Status = "available",
+            OrderTotal = null,
+            ElapsedMinutes = null,
+            OrderId = null
+        };
+
+        _context.Tables.Add(table);
+        await _context.SaveChangesAsync();
+
+        return CreatedAtAction(nameof(GetTable), new { id = table.Id }, table);
+    }
+
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult> UpdateTable(int id, [FromBody] TableUpdateRequest request)
+    {
+        var table = await _context.Tables.FirstOrDefaultAsync(t => t.Id == id);
+        if (table == null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest("Name is required");
+        }
+
+        if (request.Capacity <= 0)
+        {
+            return BadRequest("Capacity must be greater than zero");
+        }
+
+        table.Name = request.Name;
+        table.Capacity = request.Capacity;
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [HttpDelete("{id:int}")]
+    public async Task<ActionResult> DeleteTable(int id)
+    {
+        var table = await _context.Tables.FirstOrDefaultAsync(t => t.Id == id);
+        if (table == null)
+        {
+            return NotFound();
+        }
+
+        var hasOrders = await _context.Orders.AnyAsync(o => o.TableId == id);
+        if (hasOrders)
+        {
+            return BadRequest("Cannot delete table that has orders");
+        }
+
+        _context.Tables.Remove(table);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
     }
 }

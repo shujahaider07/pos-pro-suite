@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useLocation, useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useParams, useNavigate, type Location } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, ArrowLeft, UtensilsCrossed } from 'lucide-react';
 import type { CartItem, Product, Category, TableData } from '@/lib/mock-data';
@@ -7,7 +7,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import ProductCard from '@/components/pos/ProductCard';
 import CartPanel from '@/components/pos/CartPanel';
 import PaymentModal from '@/components/pos/PaymentModal';
-import KOTReceipt from '@/components/pos/KOTReceipt';
+import KOTReceipt, { BillReceipt } from '@/components/pos/KOTReceipt';
 import { toast } from 'sonner';
 
 const OrderScreen = () => {
@@ -39,7 +39,9 @@ const OrderScreen = () => {
   const [elapsed] = useState(table?.elapsedMinutes || 0);
   const [showPayment, setShowPayment] = useState(false);
   const [showKOT, setShowKOT] = useState(false);
+  const [showBill, setShowBill] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+  const [currentOrderNumber, setCurrentOrderNumber] = useState<string | null>(null);
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
@@ -69,7 +71,65 @@ const OrderScreen = () => {
     },
   });
 
+  type ActiveOrderItem = {
+    productId: number;
+    name: string;
+    price: number;
+    quantity: number;
+  };
+
+  type ActiveOrder = {
+    id: number;
+    tableId: number;
+    status: string;
+    orderNumber: string;
+    items: ActiveOrderItem[];
+  };
+
+  const { data: activeOrder } = useQuery<ActiveOrder | null>({
+    queryKey: ['activeOrder', table?.id],
+    queryFn: async () => {
+      if (!table?.id) return null;
+      const response = await fetch(`${API_BASE_URL}/api/orders/active?tableId=${table.id}`);
+      if (!response.ok) {
+        throw new Error('Failed to load active order');
+      }
+      return response.json();
+    },
+    enabled: !!table?.id,
+  });
+
   const currentCategory = categories.find(c => c.id === activeCategory);
+
+  useEffect(() => {
+    if (!activeOrder || !activeOrder.items || activeOrder.items.length === 0) return;
+    if (cartItems.length > 0) return;
+    if (isProductsLoading) return;
+
+    setCurrentOrderId(activeOrder.id);
+    setCurrentOrderNumber(activeOrder.orderNumber);
+
+    const items: CartItem[] = activeOrder.items.map(item => {
+      const matchedProduct = products.find(p => p.id === item.productId);
+      const product: Product =
+        matchedProduct ??
+        {
+          id: item.productId,
+          name: item.name,
+          price: item.price,
+          category: 'unknown',
+          image: '🍽️',
+          available: true,
+        };
+
+      return {
+        product,
+        quantity: item.quantity,
+      };
+    });
+
+    setCartItems(items);
+  }, [activeOrder, cartItems, isProductsLoading, products]);
 
   const addToCart = (product: Product) => {
     setCartItems(prev => {
@@ -92,8 +152,39 @@ const OrderScreen = () => {
     setCartItems(prev => prev.filter(i => i.product.id !== productId));
   };
 
+  type CreateOrderMode = 'payment' | 'hold';
+
+  const updateOrderMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      if (!table) {
+        throw new Error('Table not loaded');
+      }
+      if (cartItems.length === 0) {
+        throw new Error('Cart is empty');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cartItems.map(item => ({
+            productId: item.product.id,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update order');
+      }
+    },
+    onError: () => {
+      toast.error('Failed to update order');
+    },
+  });
+
   const createOrderMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (mode: CreateOrderMode) => {
       if (!table) {
         throw new Error('Table not loaded');
       }
@@ -117,12 +208,20 @@ const OrderScreen = () => {
         throw new Error('Failed to create order');
       }
 
-      return response.json() as Promise<{ id: number }>;
+      return response.json() as Promise<{ id: number; orderNumber?: string }>;
     },
-    onSuccess: data => {
+    onSuccess: (data, mode) => {
       setCurrentOrderId(data.id);
-      setShowPayment(true);
-      toast.success('Order created');
+      if (data.orderNumber) {
+        setCurrentOrderNumber(data.orderNumber);
+      }
+      if (mode === 'payment') {
+        setShowPayment(true);
+        toast.success('Order created');
+      }
+      if (mode === 'hold') {
+        holdOrderMutation.mutate(data.id);
+      }
     },
     onError: () => {
       toast.error('Failed to create order');
@@ -184,20 +283,29 @@ const OrderScreen = () => {
     },
   });
 
-  const handleProceedPayment = () => {
+  const handleProceedPayment = async () => {
     if (currentOrderId) {
-      setShowPayment(true);
+      try {
+        await updateOrderMutation.mutateAsync(currentOrderId);
+        setShowPayment(true);
+      } catch {
+        // error toast already shown in mutation
+      }
     } else {
-      createOrderMutation.mutate();
+      createOrderMutation.mutate('payment');
     }
   };
 
-  const handleHoldOrder = () => {
+  const handleHoldOrder = async () => {
     if (currentOrderId) {
-      holdOrderMutation.mutate(currentOrderId);
+      try {
+        await updateOrderMutation.mutateAsync(currentOrderId);
+        holdOrderMutation.mutate(currentOrderId);
+      } catch {
+        // error toast already shown in mutation
+      }
     } else {
-      toast.info('Order held');
-      navigate('/tables');
+      createOrderMutation.mutate('hold');
     }
   };
 
@@ -330,14 +438,19 @@ const OrderScreen = () => {
 
       {showPayment && (
         <PaymentModal
-          total={cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * 1.07}
+          total={cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0)}
           onClose={() => setShowPayment(false)}
           onComplete={() => {
             if (currentOrderId) {
-              completeOrderMutation.mutate(currentOrderId);
+              completeOrderMutation.mutate(currentOrderId, {
+                onSuccess: () => {
+                  toast.success('Payment completed!');
+                  setShowBill(true);
+                },
+              });
             } else {
               toast.success('Payment completed!');
-              navigate('/tables');
+              setShowBill(true);
             }
             setShowPayment(false);
           }}
@@ -349,6 +462,19 @@ const OrderScreen = () => {
           table={table}
           items={cartItems}
           onClose={() => setShowKOT(false)}
+        />
+      )}
+
+      {showBill && (
+        <BillReceipt
+          table={table}
+          items={cartItems}
+          orderNumber={currentOrderNumber}
+          onClose={() => {
+            setShowBill(false);
+            setCartItems([]);
+            navigate('/tables');
+          }}
         />
       )}
     </div>

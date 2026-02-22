@@ -50,11 +50,11 @@ const AdminDashboard = () => {
   const dashboardStats = data;
 
   const statCards = [
-    { label: "Today's Revenue", value: `₹${dashboardStats.todayRevenue.toLocaleString()}`, icon: DollarSign, change: '+12.5%', up: true, gradient: 'gradient-primary' },
-    { label: 'Weekly Revenue', value: `₹${dashboardStats.weeklyRevenue.toLocaleString()}`, icon: TrendingUp, change: '+8.2%', up: true, gradient: 'gradient-success' },
-    { label: 'Monthly Revenue', value: `₹${(dashboardStats.monthlyRevenue / 100000).toFixed(1)}L`, icon: BarChart3, change: '+15.3%', up: true, gradient: 'gradient-warning' },
+    { label: "Today's Revenue", value: `₨${dashboardStats.todayRevenue.toLocaleString()}`, icon: DollarSign, change: '+12.5%', up: true, gradient: 'gradient-primary' },
+    { label: 'Weekly Revenue', value: `₨${dashboardStats.weeklyRevenue.toLocaleString()}`, icon: TrendingUp, change: '+8.2%', up: true, gradient: 'gradient-success' },
+    { label: 'Monthly Revenue', value: `₨${dashboardStats.monthlyRevenue.toLocaleString()}`, icon: BarChart3, change: '+15.3%', up: true, gradient: 'gradient-warning' },
     { label: 'Total Orders', value: dashboardStats.totalOrders.toString(), icon: ShoppingBag, change: '+23', up: true, gradient: 'gradient-danger' },
-    { label: 'Avg Order Value', value: `₹${dashboardStats.avgOrderValue}`, icon: Award, change: '-2.1%', up: false, gradient: 'gradient-primary' },
+    { label: 'Avg Order Value', value: `₨${dashboardStats.avgOrderValue}`, icon: Award, change: '-2.1%', up: false, gradient: 'gradient-primary' },
   ];
   return (
     <AdminSidebar>
@@ -102,8 +102,8 @@ const AdminDashboard = () => {
               <BarChart data={dashboardStats.salesTrend} barSize={32}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(225,20%,90%)" />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} tickFormatter={v => `₹${v / 1000}k`} />
-                <Tooltip formatter={(value: number) => [`₹${value.toLocaleString()}`, 'Sales']} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} tickFormatter={v => `₨${v / 1000}k`} />
+                <Tooltip formatter={(value: number) => [`₨${value.toLocaleString()}`, 'Sales']} />
                 <Bar dataKey="sales" fill="hsl(234,89%,56%)" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -164,7 +164,7 @@ const AdminDashboard = () => {
                     <td className="py-3 font-medium text-muted-foreground">{i + 1}</td>
                     <td className="py-3 font-medium">{item.name}</td>
                     <td className="py-3 text-right text-muted-foreground">{item.quantity}</td>
-                    <td className="py-3 text-right font-bold">₹{item.revenue.toLocaleString()}</td>
+                    <td className="py-3 text-right font-bold">₨{item.revenue.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>

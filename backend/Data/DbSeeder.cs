@@ -118,6 +118,19 @@ public static class DbSeeder
             context.Users.AddRange(users);
         }
 
+        if (!await context.ChargeSettings.AnyAsync())
+        {
+            var settings = new ChargeSettingsEntity
+            {
+                TaxEnabled = true,
+                TaxPercent = 5,
+                ServiceEnabled = true,
+                ServicePercent = 2
+            };
+
+            context.ChargeSettings.Add(settings);
+        }
+
         await context.SaveChangesAsync();
     }
 }

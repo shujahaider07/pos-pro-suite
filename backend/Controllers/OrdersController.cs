@@ -9,6 +9,12 @@ public record OrderItemRequest(int ProductId, int Quantity);
 
 public record CreateOrderRequest(int TableId, IReadOnlyCollection<OrderItemRequest> Items);
 
+public record UpdateOrderRequest(IReadOnlyCollection<OrderItemRequest> Items);
+
+public record OrderItemDto(int ProductId, string Name, decimal Price, int Quantity);
+
+public record OrderDto(int Id, int TableId, string Status, string OrderNumber, IReadOnlyCollection<OrderItemDto> Items);
+
 [ApiController]
 [Route("api/[controller]")]
 public class OrdersController : ControllerBase
@@ -18,6 +24,90 @@ public class OrdersController : ControllerBase
     public OrdersController(PosDbContext context)
     {
         _context = context;
+    }
+
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult> UpdateOrder(int id, [FromBody] UpdateOrderRequest request)
+    {
+        var order = await _context.Orders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null)
+        {
+            return NotFound();
+        }
+
+        var productIds = request.Items.Select(i => i.ProductId).ToArray();
+        var products = await _context.Products
+            .Where(p => productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id);
+
+        if (products.Count != productIds.Length)
+        {
+            return BadRequest("One or more products were not found");
+        }
+
+        _context.OrderItems.RemoveRange(order.Items);
+        order.Items.Clear();
+
+        foreach (var item in request.Items)
+        {
+            var product = products[item.ProductId];
+            order.Items.Add(new OrderItemEntity
+            {
+                ProductId = product.Id,
+                Quantity = item.Quantity,
+                UnitPrice = product.Price
+            });
+        }
+
+        order.TotalAmount = order.Items.Sum(i => i.UnitPrice * i.Quantity);
+
+        var table = await _context.Tables.FirstOrDefaultAsync(t => t.Id == order.TableId);
+        if (table != null)
+        {
+            table.OrderTotal = order.TotalAmount;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [HttpGet("active")]
+    public async Task<ActionResult<OrderDto?>> GetActiveOrder([FromQuery] int tableId)
+    {
+        var order = await _context.Orders
+            .Include(o => o.Items)
+                .ThenInclude(i => i.Product)
+            .Where(o => o.TableId == tableId && (o.Status == "Active" || o.Status == "Held"))
+            .OrderByDescending(o => o.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (order == null)
+        {
+            return Ok(null);
+        }
+
+        var items = order.Items
+            .Select(i => new OrderItemDto(
+                i.ProductId,
+                i.Product!.Name,
+                i.UnitPrice,
+                i.Quantity
+            ))
+            .ToList();
+
+        var dto = new OrderDto(
+            order.Id,
+            order.TableId,
+            order.Status,
+            order.OrderNumber,
+            items
+        );
+
+        return Ok(dto);
     }
 
     [HttpPost]
