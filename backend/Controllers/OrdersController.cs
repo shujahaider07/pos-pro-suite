@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PosProSuite.Api.Data;
@@ -7,13 +8,15 @@ namespace PosProSuite.Api.Controllers;
 
 public record OrderItemRequest(int ProductId, int Quantity);
 
-public record CreateOrderRequest(int TableId, IReadOnlyCollection<OrderItemRequest> Items);
+public record CreateOrderRequest(int TableId, IReadOnlyCollection<OrderItemRequest> Items, string? CreatedBy);
 
 public record UpdateOrderRequest(IReadOnlyCollection<OrderItemRequest> Items);
 
 public record OrderItemDto(int ProductId, string Name, decimal Price, int Quantity);
 
 public record OrderDto(int Id, int TableId, string Status, string OrderNumber, IReadOnlyCollection<OrderItemDto> Items);
+
+public record OrderSummaryDto(int Id, string OrderNumber, string TableName, string Status, DateTime CreatedAt, decimal TotalAmount);
 
 [ApiController]
 [Route("api/[controller]")]
@@ -24,6 +27,29 @@ public class OrdersController : ControllerBase
     public OrdersController(PosDbContext context)
     {
         _context = context;
+    }
+
+    [HttpGet("history")]
+    public async Task<ActionResult<IEnumerable<OrderSummaryDto>>> GetHistory([FromQuery] int days = 30)
+    {
+        var since = DateTime.UtcNow.Date.AddDays(-days);
+
+        var orders = await _context.Orders
+            .Include(o => o.Table)
+            .Where(o => o.CreatedAt >= since)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync();
+
+        var result = orders.Select(o => new OrderSummaryDto(
+            o.Id,
+            o.OrderNumber,
+            o.Table != null ? o.Table.Name : $"Table {o.TableId}",
+            o.Status,
+            o.CreatedAt,
+            o.TotalAmount
+        ));
+
+        return Ok(result);
     }
 
     [HttpPut("{id:int}")]
@@ -134,7 +160,8 @@ public class OrdersController : ControllerBase
             TableId = table.Id,
             CreatedAt = DateTime.UtcNow,
             Status = "Active",
-            OrderNumber = $"ORD-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}"
+            OrderNumber = $"ORD-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
+            CreatedBy = request.CreatedBy
         };
 
         foreach (var item in request.Items)
@@ -231,4 +258,6 @@ public class OrdersController : ControllerBase
 
         return NoContent();
     }
+
+    
 }

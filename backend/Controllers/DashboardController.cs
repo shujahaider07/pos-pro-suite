@@ -88,6 +88,18 @@ public class DashboardController : ControllerBase
             categoryPercentages = Array.Empty<object>();
         }
 
+        var employeePerformance = await completedOrders
+            .Where(o => o.CreatedBy != null && o.CreatedBy != "")
+            .GroupBy(o => o.CreatedBy)
+            .Select(g => new
+            {
+                name = g.Key!,
+                orders = g.Count(),
+                revenue = g.Sum(o => o.TotalAmount)
+            })
+            .OrderByDescending(x => x.revenue)
+            .ToListAsync();
+
         var result = new
         {
             todayRevenue,
@@ -101,7 +113,8 @@ public class DashboardController : ControllerBase
                 day = x.day.ToString("ddd"),
                 sales = x.sales
             }),
-            categoryPerformance = categoryPercentages
+            categoryPerformance = categoryPercentages,
+            employeePerformance
         };
 
         return Ok(result);

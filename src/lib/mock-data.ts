@@ -8,6 +8,7 @@ export interface TableData {
   orderTotal?: number;
   elapsedMinutes?: number;
   orderId?: string;
+  holdItems?: number;
 }
 
 export interface Product {
@@ -34,12 +35,12 @@ export interface Category {
 
 export const tables: TableData[] = [
   { id: 1, name: 'T1', status: 'available', capacity: 4 },
-  { id: 2, name: 'T2', status: 'occupied', capacity: 4, orderTotal: 1250, elapsedMinutes: 32, orderId: 'ORD-2041' },
-  { id: 3, name: 'T3', status: 'occupied', capacity: 6, orderTotal: 890, elapsedMinutes: 15, orderId: 'ORD-2042' },
+  { id: 2, name: 'T2', status: 'occupied', capacity: 4, orderTotal: 1250, elapsedMinutes: 32, orderId: 'ORD-2041', holdItems: 3 },
+  { id: 3, name: 'T3', status: 'occupied', capacity: 6, orderTotal: 890, elapsedMinutes: 15, orderId: 'ORD-2042', holdItems: 5 },
   { id: 4, name: 'T4', status: 'available', capacity: 2 },
   { id: 5, name: 'T5', status: 'reserved', capacity: 4 },
   { id: 6, name: 'T6', status: 'available', capacity: 6 },
-  { id: 7, name: 'T7', status: 'occupied', capacity: 4, orderTotal: 2100, elapsedMinutes: 48, orderId: 'ORD-2039' },
+  { id: 7, name: 'T7', status: 'occupied', capacity: 4, orderTotal: 2100, elapsedMinutes: 48, orderId: 'ORD-2039', holdItems: 2 },
   { id: 8, name: 'T8', status: 'available', capacity: 2 },
   { id: 9, name: 'T9', status: 'reserved', capacity: 8 },
   { id: 10, name: 'T10', status: 'available', capacity: 4 },

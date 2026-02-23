@@ -9,11 +9,13 @@ import CartPanel from '@/components/pos/CartPanel';
 import PaymentModal from '@/components/pos/PaymentModal';
 import KOTReceipt, { BillReceipt } from '@/components/pos/KOTReceipt';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/pos-context';
 
 const OrderScreen = () => {
   const { tableId } = useParams();
   const navigate = useNavigate();
   const location = useLocation() as Location & { state?: { table?: TableData } };
+  const { userName, userEmail } = useAuth();
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 
@@ -197,6 +199,8 @@ const OrderScreen = () => {
         throw new Error('Cart is empty');
       }
 
+      const createdBy = userEmail || userName || 'unknown';
+
       const response = await fetch(`${API_BASE_URL}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -206,6 +210,7 @@ const OrderScreen = () => {
             productId: item.product.id,
             quantity: item.quantity,
           })),
+          createdBy,
         }),
       });
 

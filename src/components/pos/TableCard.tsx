@@ -64,6 +64,12 @@ const TableCard = ({ table, index, onClick }: TableCardProps) => {
             <span className="text-muted-foreground">Total</span>
             <span className="font-bold text-foreground">₨{table.orderTotal?.toLocaleString()}</span>
           </div>
+          {typeof table.holdItems === 'number' && table.holdItems > 0 && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Held items</span>
+              <span className="font-medium text-foreground">{table.holdItems}</span>
+            </div>
+          )}
           <div className="flex items-center gap-1 text-muted-foreground text-xs">
             <Clock className="w-3 h-3" />
             <span>{table.elapsedMinutes} min ago</span>

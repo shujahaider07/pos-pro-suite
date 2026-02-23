@@ -13,6 +13,7 @@ interface DashboardStats {
   topItems: { name: string; quantity: number; revenue: number }[];
   salesTrend: { day: string; sales: number }[];
   categoryPerformance: { name: string; value: number }[];
+  employeePerformance: { name: string; orders: number; revenue: number }[];
 }
 
 const COLORS = ['hsl(234,89%,56%)', 'hsl(152,69%,40%)', 'hsl(38,92%,50%)', 'hsl(0,72%,56%)', 'hsl(280,60%,55%)'];
@@ -140,37 +141,75 @@ const AdminDashboard = () => {
           </motion.div>
         </div>
 
-        {/* Top Selling */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-card rounded-2xl border p-6"
-        >
-          <h3 className="font-bold mb-4">Top Selling Items</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left pb-3 text-muted-foreground font-medium">#</th>
-                  <th className="text-left pb-3 text-muted-foreground font-medium">Item</th>
-                  <th className="text-right pb-3 text-muted-foreground font-medium">Qty Sold</th>
-                  <th className="text-right pb-3 text-muted-foreground font-medium">Revenue</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboardStats.topItems.map((item, i) => (
-                  <tr key={item.name} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                    <td className="py-3 font-medium text-muted-foreground">{i + 1}</td>
-                    <td className="py-3 font-medium">{item.name}</td>
-                    <td className="py-3 text-right text-muted-foreground">{item.quantity}</td>
-                    <td className="py-3 text-right font-bold">₨{item.revenue.toLocaleString()}</td>
+        {/* Top Selling & Employee Performance */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="bg-card rounded-2xl border p-6"
+          >
+            <h3 className="font-bold mb-4">Top Selling Items</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left pb-3 text-muted-foreground font-medium">#</th>
+                    <th className="text-left pb-3 text-muted-foreground font-medium">Item</th>
+                    <th className="text-right pb-3 text-muted-foreground font-medium">Qty Sold</th>
+                    <th className="text-right pb-3 text-muted-foreground font-medium">Revenue</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
+                </thead>
+                <tbody>
+                  {dashboardStats.topItems.map((item, i) => (
+                    <tr key={item.name} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="py-3 font-medium text-muted-foreground">{i + 1}</td>
+                      <td className="py-3 font-medium">{item.name}</td>
+                      <td className="py-3 text-right text-muted-foreground">{item.quantity}</td>
+                      <td className="py-3 text-right font-bold">₨{item.revenue.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45 }}
+            className="bg-card rounded-2xl border p-6"
+          >
+            <h3 className="font-bold mb-4">Employee Performance</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left pb-3 text-muted-foreground font-medium">Employee</th>
+                    <th className="text-right pb-3 text-muted-foreground font-medium">Orders</th>
+                    <th className="text-right pb-3 text-muted-foreground font-medium">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dashboardStats.employeePerformance.map(emp => (
+                    <tr key={emp.name} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="py-3 font-medium">{emp.name}</td>
+                      <td className="py-3 text-right text-muted-foreground">{emp.orders}</td>
+                      <td className="py-3 text-right font-bold">₨{emp.revenue.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  {!dashboardStats.employeePerformance.length && (
+                    <tr>
+                      <td colSpan={3} className="py-4 text-center text-xs text-muted-foreground">
+                        Abhi tak kisi employee ke completed orders nahi hain
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        </div>
       </div>
     </AdminSidebar>
   );

@@ -307,6 +307,55 @@
         }
       }
     },
+    "/api/Orders/history": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderSummaryDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderSummaryDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderSummaryDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/Orders/{id}": {
       "put": {
         "tags": [
@@ -889,6 +938,10 @@
               "$ref": "#/components/schemas/OrderItemRequest"
             },
             "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -975,6 +1028,10 @@
             "type": "number",
             "format": "double"
           },
+          "createdBy": {
+            "type": "string",
+            "nullable": true
+          },
           "items": {
             "type": "array",
             "items": {
@@ -1049,6 +1106,36 @@
           "quantity": {
             "type": "integer",
             "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrderSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "tableName": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalAmount": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false
@@ -1210,6 +1297,10 @@
           "orderId": {
             "type": "string",
             "nullable": true
+          },
+          "holdItems": {
+            "type": "integer",
+            "format": "int32"
           },
           "orders": {
             "type": "array",

@@ -9,6 +9,13 @@ public static class DbSeeder
     {
         await context.Database.EnsureCreatedAsync();
 
+        await context.Database.ExecuteSqlRawAsync(@"
+IF COL_LENGTH('Orders', 'CreatedBy') IS NULL
+BEGIN
+    ALTER TABLE [Orders] ADD [CreatedBy] nvarchar(max) NULL;
+END
+");
+
         if (!await context.Tables.AnyAsync())
         {
             var tables = new List<TableEntity>

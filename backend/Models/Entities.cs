@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
 namespace PosProSuite.Api.Models;
@@ -13,6 +14,11 @@ public class TableEntity
 
     [JsonPropertyName("orderId")]
     public string? OrderId { get; set; }
+
+    [JsonPropertyName("holdItems")]
+    [NotMapped]
+    public int HoldItems { get; set; }
+
     public ICollection<OrderEntity> Orders { get; set; } = new List<OrderEntity>();
 }
 
@@ -62,6 +68,8 @@ public class OrderEntity
     public DateTime? CompletedAt { get; set; }
     public string Status { get; set; } = "Active";
     public decimal TotalAmount { get; set; }
+    [JsonPropertyName("createdBy")]
+    public string? CreatedBy { get; set; }
     public ICollection<OrderItemEntity> Items { get; set; } = new List<OrderItemEntity>();
 }
 

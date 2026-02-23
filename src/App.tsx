@@ -12,6 +12,8 @@ import AdminProducts from "./pages/AdminProducts";
 import AdminCategories from "./pages/AdminCategories";
 import AdminSettings from "./pages/AdminSettings";
 import AdminTables from "./pages/AdminTables";
+import AdminSales from "./pages/AdminSales";
+import AdminReports from "./pages/AdminReports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,9 +39,11 @@ const App = () => (
             <Route path="/tables" element={<ProtectedRoute><Tables /></ProtectedRoute>} />
             <Route path="/order/:tableId" element={<ProtectedRoute><OrderScreen /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
+            <Route path="/admin/sales" element={<ProtectedRoute requiredRole="admin"><AdminSales /></ProtectedRoute>} />
             <Route path="/admin/products" element={<ProtectedRoute requiredRole="admin"><AdminProducts /></ProtectedRoute>} />
             <Route path="/admin/categories" element={<ProtectedRoute requiredRole="admin"><AdminCategories /></ProtectedRoute>} />
             <Route path="/admin/tables" element={<ProtectedRoute requiredRole="admin"><AdminTables /></ProtectedRoute>} />
+            <Route path="/admin/reports" element={<ProtectedRoute requiredRole="admin"><AdminReports /></ProtectedRoute>} />
             <Route path="/admin/settings" element={<ProtectedRoute requiredRole="admin"><AdminSettings /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

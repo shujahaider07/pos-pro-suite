@@ -42,6 +42,8 @@ const AdminProducts = () => {
   });
 
   const [editingProduct, setEditingProduct] = useState<ApiProduct | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const [form, setForm] = useState({
     name: '',
@@ -122,6 +124,13 @@ const AdminProducts = () => {
   };
 
   const currentCategory = categories?.find(c => c.id === form.categoryId);
+
+  const totalProducts = products?.length ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalProducts / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const pagedProducts = (products ?? []).slice(startIndex, endIndex);
 
   return (
     <AdminSidebar>
@@ -209,9 +218,26 @@ const AdminProducts = () => {
           </div>
 
           <div className="lg:col-span-2 bg-card rounded-2xl border p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-lg">All Products</h2>
-              <span className="text-xs text-muted-foreground">{products?.length ?? 0} items</span>
+            <div className="flex items-center justify-between mb-4 gap-4">
+              <div>
+                <h2 className="font-semibold text-lg">All Products</h2>
+                <span className="text-xs text-muted-foreground">{totalProducts} items</span>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>Rows per page</span>
+                <select
+                  value={pageSize}
+                  onChange={e => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="h-8 rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -226,7 +252,7 @@ const AdminProducts = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {products?.map(p => (
+                  {pagedProducts.map(p => (
                     <tr key={p.id} className="border-b last:border-0">
                       <td className="py-2">
                         <div className="flex items-center gap-2">
@@ -262,7 +288,7 @@ const AdminProducts = () => {
                       </td>
                     </tr>
                   ))}
-                  {!products?.length && (
+                  {!totalProducts && (
                     <tr>
                       <td colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
                         No products yet. Use the form to add one.
@@ -271,6 +297,37 @@ const AdminProducts = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
+              <div>
+                {totalProducts > 0 && (
+                  <span>
+                    Showing {startIndex + 1}-{Math.min(endIndex, totalProducts)} of {totalProducts}
+                  </span>
+                )}
+                {!totalProducts && <span>No data</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 px-3 rounded-md border text-xs disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages || totalProducts === 0}
+                  className="h-8 px-3 rounded-md border text-xs disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         </div>
