@@ -15,15 +15,26 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
     {
         policy.AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials()
-            .WithOrigins(
-                "http://localhost:5173",
-                "http://localhost:4173",
-                "http://localhost:8080"
-            );
+              .AllowAnyMethod()
+              .SetIsOriginAllowed(origin => true) // This allows ANY origin
+              .AllowCredentials();
     });
 });
+
+//builder.Services.AddCors(options =>
+//{
+//    options.AddDefaultPolicy(policy =>
+//    {
+//        policy.AllowAnyHeader()
+//            .AllowAnyMethod()
+//            .AllowCredentials()
+//            .WithOrigins(
+//                "http://localhost:5173",
+//                "http://localhost:4173",
+//                "http://localhost:8080"
+//            );
+//    });
+//});
 
 var app = builder.Build();
 
