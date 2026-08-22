@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PosProSuite.Api.Data;
+using PosProSuite.Api.Models;
 
 namespace PosProSuite.Api.Controllers;
 
@@ -41,6 +42,36 @@ public class ProductsController : ControllerBase
             .ToListAsync();
 
         return Ok(products);
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<ProductEntity>> CreateProduct([FromBody] ProductEntity product)
+    {
+        _context.Products.Add(product);
+        await _context.SaveChangesAsync();
+        return CreatedAtAction(nameof(GetProducts), new { id = product.Id }, product);
+    }
+
+    [HttpPatch("{id:int}/stock")]
+    public async Task<ActionResult> ToggleStock(int id)
+    {
+        var product = await _context.Products.FindAsync(id);
+        if (product == null) return NotFound();
+
+        product.Available = !product.Available;
+        await _context.SaveChangesAsync();
+        return Ok(product);
+    }
+
+    [HttpDelete("{id:int}")]
+    public async Task<ActionResult> DeleteProduct(int id)
+    {
+        var product = await _context.Products.FindAsync(id);
+        if (product == null) return NotFound();
+
+        _context.Products.Remove(product);
+        await _context.SaveChangesAsync();
+        return NoContent();
     }
 }
 

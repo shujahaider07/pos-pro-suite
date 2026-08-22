@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PosProSuite.Api.Data;
+using PosProSuite.Api.Models;
 
 namespace PosProSuite.Api.Controllers;
 
@@ -35,6 +36,39 @@ public class CategoriesController : ControllerBase
         });
 
         return Ok(result);
+    }
+
+    public record CreateCategoryDto(string Name, string Icon, string? Subcategories);
+
+    [HttpPost]
+    public async Task<ActionResult> CreateCategory([FromBody] CreateCategoryDto dto)
+    {
+        var categoryId = dto.Name.ToLower().Replace(" ", "-");
+        var existing = await _context.Categories.FindAsync(categoryId);
+        if (existing != null)
+        {
+            return BadRequest("Category already exists");
+        }
+
+        var cat = new CategoryEntity
+        {
+            Id = categoryId,
+            Name = dto.Name,
+            Icon = string.IsNullOrWhiteSpace(dto.Icon) ? "🍽️" : dto.Icon
+        };
+        _context.Categories.Add(cat);
+
+        if (!string.IsNullOrWhiteSpace(dto.Subcategories))
+        {
+            var subs = dto.Subcategories.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var sub in subs)
+            {
+                _context.Subcategories.Add(new SubcategoryEntity { Name = sub, CategoryId = categoryId });
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(new { id = cat.Id, name = cat.Name, icon = cat.Icon });
     }
 }
 

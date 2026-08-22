@@ -1,26 +1,90 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 type UserRole = 'admin' | 'employee' | null;
+
+interface AuthUser {
+  email: string;
+  role: UserRole;
+  userName: string;
+  token?: string;
+}
 
 interface AuthContextType {
   isAuthenticated: boolean;
   role: UserRole;
   userName: string;
-  login: (email: string, password: string, role: UserRole) => boolean;
+  login: (email: string, password: string, role: UserRole, customName?: string) => boolean;
   logout: () => void;
+  isBackendConnected: boolean;
+  setIsBackendConnected: (connected: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [role, setRole] = useState<UserRole>(null);
-  const [userName, setUserName] = useState('');
+const AUTH_STORAGE_KEY = 'restopos_auth_session';
 
-  const login = (email: string, _password: string, selectedRole: UserRole) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as AuthUser;
+        return !!parsed.role;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  });
+
+  const [role, setRole] = useState<UserRole>(() => {
+    try {
+      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as AuthUser;
+        return parsed.role;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  const [userName, setUserName] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as AuthUser;
+        return parsed.userName || '';
+      }
+    } catch {
+      // ignore
+    }
+    return '';
+  });
+
+  const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isAuthenticated && role) {
+      localStorage.setItem(
+        AUTH_STORAGE_KEY,
+        JSON.stringify({ email: userName ? `${userName}@resto.com` : '', role, userName })
+      );
+    } else {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  }, [isAuthenticated, role, userName]);
+
+  const login = (email: string, _password: string, selectedRole: UserRole, customName?: string) => {
+    const name = customName || email.split('@')[0] || (selectedRole === 'admin' ? 'Admin' : 'Staff');
     setIsAuthenticated(true);
     setRole(selectedRole);
-    setUserName(email.split('@')[0]);
+    setUserName(name);
+    localStorage.setItem(
+      AUTH_STORAGE_KEY,
+      JSON.stringify({ email, role: selectedRole, userName: name })
+    );
     return true;
   };
 
@@ -28,10 +92,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(false);
     setRole(null);
     setUserName('');
+    localStorage.removeItem(AUTH_STORAGE_KEY);
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, role, userName, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        role,
+        userName,
+        login,
+        logout,
+        isBackendConnected,
+        setIsBackendConnected,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -42,3 +117,4 @@ export function useAuth() {
   if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 }
+

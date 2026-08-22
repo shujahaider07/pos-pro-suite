@@ -1,1 +1,12 @@
-{"Version":1,"Hash":"aZuoc63dyC6bNVcEnVL5cWX2TTizG8osESyew8AMYMo=","Source":"PosProSuite.Api","BasePath":"/","Mode":"Root","ManifestType":"Build","ReferencedProjectsConfiguration":[],"DiscoveryPatterns":[],"Assets":[],"Endpoints":[]}
+{
+  "Version": 1,
+  "Hash": "rmYgwLbYWXx4pQC3Mju9G+jJmWxP+jTtExH2hC04AT0=",
+  "Source": "PosProSuite.Api",
+  "BasePath": "_content/PosProSuite.Api",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}

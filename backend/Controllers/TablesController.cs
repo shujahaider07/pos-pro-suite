@@ -37,4 +37,23 @@ public class TablesController : ControllerBase
 
         return Ok(table);
     }
+
+    [HttpPost]
+    public async Task<ActionResult<TableEntity>> CreateTable([FromBody] TableEntity table)
+    {
+        _context.Tables.Add(table);
+        await _context.SaveChangesAsync();
+        return CreatedAtAction(nameof(GetTable), new { id = table.Id }, table);
+    }
+
+    [HttpPatch("{id:int}/status")]
+    public async Task<ActionResult> UpdateTableStatus(int id, [FromBody] string status)
+    {
+        var table = await _context.Tables.FindAsync(id);
+        if (table == null) return NotFound();
+
+        table.Status = status.ToLower();
+        await _context.SaveChangesAsync();
+        return Ok(table);
+    }
 }

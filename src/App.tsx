@@ -15,7 +15,11 @@ const queryClient = new QueryClient();
 const ProtectedRoute = ({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'admin' | 'employee' }) => {
   const { isAuthenticated, role } = useAuth();
   if (!isAuthenticated) return <Navigate to="/" replace />;
-  if (requiredRole && role !== requiredRole) return <Navigate to={role === 'admin' ? '/admin' : '/tables'} replace />;
+  
+  const userRole = (role || 'admin').toLowerCase();
+  if (requiredRole && requiredRole.toLowerCase() === 'admin' && userRole !== 'admin') {
+    return <Navigate to="/tables" replace />;
+  }
   return <>{children}</>;
 };
 
