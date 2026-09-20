@@ -8,6 +8,9 @@ namespace PosProSuite.Api.Controllers;
 public record OrderItemRequest(int ProductId, int Quantity);
 public record CreateOrderRequest(IReadOnlyCollection<OrderItemRequest> Items, string? PaymentMethod = "Cash");
 
+public record ReturnItemRequest(int ProductId, int ReturnQuantity);
+public record ReturnOrderRequest(IReadOnlyCollection<ReturnItemRequest> ReturnedItems);
+
 [ApiController]
 [Route("api/[controller]")]
 public class OrdersController : ControllerBase
@@ -39,6 +42,7 @@ public class OrdersController : ControllerBase
             completedAt = o.CompletedAt,
             items = o.Items.Select(i => new
             {
+                productId = i.ProductId,
                 productName = i.Product != null ? i.Product.Name : $"Item #{i.ProductId}",
                 quantity = i.Quantity,
                 price = i.UnitPrice
@@ -127,6 +131,77 @@ public class OrdersController : ControllerBase
         await _context.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    /// <summary>Sales Return: Customer returns item(s) from a previous order</summary>
+    [HttpPost("{id:int}/return")]
+    public async Task<ActionResult> ReturnOrderItems(int id, [FromBody] ReturnOrderRequest request)
+    {
+        var order = await _context.Orders
+            .Include(o => o.Items)
+            .ThenInclude(i => i.Product)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null) return NotFound("Order not found.");
+
+        if (request.ReturnedItems == null || !request.ReturnedItems.Any())
+            return BadRequest("No items selected for return.");
+
+        decimal totalRefundAmount = 0;
+        var stockLogs = new List<StockLogEntity>();
+
+        foreach (var retItem in request.ReturnedItems)
+        {
+            var orderItem = order.Items.FirstOrDefault(i => i.ProductId == retItem.ProductId);
+            if (orderItem == null) continue;
+
+            int qtyToReturn = Math.Min(orderItem.Quantity, retItem.ReturnQuantity);
+            if (qtyToReturn <= 0) continue;
+
+            // Reduce order item quantity
+            orderItem.Quantity -= qtyToReturn;
+            decimal refund = qtyToReturn * orderItem.UnitPrice;
+            totalRefundAmount += refund;
+
+            // Restore stock back to product inventory
+            var product = await _context.Products.FindAsync(retItem.ProductId);
+            if (product != null)
+            {
+                product.StockQuantity += qtyToReturn;
+                product.Available = true;
+
+                stockLogs.Add(new StockLogEntity
+                {
+                    ProductId = retItem.ProductId,
+                    QuantityChange = qtyToReturn, // +ve stock restoration
+                    Reason = $"Return (Order #{order.OrderNumber})",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        // Recalculate order total amount
+        order.TotalAmount = order.Items.Sum(i => i.UnitPrice * i.Quantity);
+        if (order.Items.All(i => i.Quantity == 0))
+        {
+            order.Status = "Returned";
+        }
+        else
+        {
+            order.Status = "Partially Returned";
+        }
+
+        _context.StockLogs.AddRange(stockLogs);
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            order.Id,
+            order.OrderNumber,
+            refundAmount = totalRefundAmount,
+            newOrderTotal = order.TotalAmount,
+            order.Status
+        });
     }
 
     [HttpPost("{id:int}/cancel")]

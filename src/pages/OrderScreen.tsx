@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus } from 'lucide-react';
+import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus, RotateCcw, X } from 'lucide-react';
 import { initialProducts, initialCategories, type CartItem, type Product, type Category } from '@/lib/mock-data';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ProductCard from '@/components/pos/ProductCard';
 import PaymentModal from '@/components/pos/PaymentModal';
 import TuckShopReceipt from '@/components/pos/TuckShopReceipt';
+import ReturnModal from '@/components/pos/ReturnModal';
 import { toast } from 'sonner';
 
 const OrderScreen = () => {
@@ -22,10 +23,26 @@ const OrderScreen = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [showRecentSalesModal, setShowRecentSalesModal] = useState(false);
+  const [selectedReturnOrder, setSelectedReturnOrder] = useState<any | null>(null);
   const [lastOrderNumber, setLastOrderNumber] = useState('');
   const [lastPaymentMethod, setLastPaymentMethod] = useState<'Cash' | 'Digital'>('Cash');
   const [lastCashReceived, setLastCashReceived] = useState<number | undefined>(undefined);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+
+  // Fetch recent orders for return lookup
+  const { data: recentOrders = [] } = useQuery({
+    queryKey: ['orders'],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/orders`);
+        if (!res.ok) return [];
+        return res.json();
+      } catch {
+        return [];
+      }
+    },
+  });
 
   // Focus search input on mount so barcode scanner works immediately
   useEffect(() => {
@@ -255,6 +272,15 @@ const OrderScreen = () => {
               className="w-full h-11 pl-10 pr-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
             />
           </div>
+
+          {/* Quick Returns Button */}
+          <button
+            onClick={() => setShowRecentSalesModal(true)}
+            className="px-3.5 h-11 rounded-xl border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shadow-soft"
+            title="Sales Return & Refunds"
+          >
+            <RotateCcw className="w-4 h-4" /> Returns
+          </button>
         </div>
 
         {/* Categories Bar */}
@@ -428,6 +454,71 @@ const OrderScreen = () => {
           onClose={() => {
             setShowReceipt(false);
             handleClearOrder();
+          }}
+        />
+      )}
+
+      {/* Recent Sales / Return Lookup Modal */}
+      {showRecentSalesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md border shadow-float space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-orange-500" /> Select Order to Return
+              </h3>
+              <button onClick={() => setShowRecentSalesModal(false)} className="p-1 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto pos-scrollbar space-y-2">
+              {recentOrders.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No recent orders found</p>
+              ) : (
+                recentOrders.map((ord: any) => (
+                  <div
+                    key={ord.id}
+                    onClick={() => {
+                      if (ord.status === 'Returned') {
+                        toast.error('This order has already been fully returned.');
+                        return;
+                      }
+                      setSelectedReturnOrder(ord);
+                      setShowRecentSalesModal(false);
+                    }}
+                    className={`p-3.5 rounded-xl border text-sm cursor-pointer transition-all hover:border-orange-500/50 hover:bg-orange-500/5 flex justify-between items-center ${
+                      ord.status === 'Returned' ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <div>
+                      <p className="font-bold">{ord.orderNumber}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(ord.createdAt).toLocaleTimeString()} • {ord.paymentMethod}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-primary">Rs {ord.total}</p>
+                      <span className="text-[10px] text-orange-500 font-bold uppercase">
+                        {ord.status === 'Returned' ? 'Fully Returned' : 'Click to Return'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sales Return Modal */}
+      {selectedReturnOrder && (
+        <ReturnModal
+          order={selectedReturnOrder}
+          onClose={() => setSelectedReturnOrder(null)}
+          onReturnSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['orders'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['stock'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] });
           }}
         />
       )}

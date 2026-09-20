@@ -13,6 +13,8 @@ import {
 } from 'recharts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AdminSidebar from '@/components/pos/AdminSidebar';
+import ReturnModal from '@/components/pos/ReturnModal';
+import { RotateCcw } from 'lucide-react';
 import {
   dashboardStats as mockStats, initialProducts, initialCategories,
   initialStaff, initialOrders, initialSettings,
@@ -53,6 +55,25 @@ const AdminDashboard = () => {
   const [categoriesList, setCategoriesList] = useState<Category[]>(initialCategories);
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
   const [newCategory, setNewCategory] = useState({ id: '', name: '', icon: '🛒', subcategories: '' });
+
+  // Return Modal State
+  const [selectedReturnOrder, setSelectedReturnOrder] = useState<any | null>(null);
+
+  // Orders Query
+  const { data: ordersList = initialOrders } = useQuery({
+    queryKey: ['orders'],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/orders`);
+        if (!res.ok) return initialOrders;
+        const data = await res.json();
+        return Array.isArray(data) && data.length > 0 ? data : initialOrders;
+      } catch {
+        return initialOrders;
+      }
+    },
+    initialData: initialOrders,
+  });
 
   // Staff State
   const [staffList, setStaffList] = useState<StaffMember[]>(initialStaff);
@@ -546,19 +567,42 @@ const AdminDashboard = () => {
               <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                 <BarChart3 className="w-6 h-6 text-primary" /> Sales & Order History
               </h1>
-              <p className="text-muted-foreground text-sm">View completed counter transactions and sales records.</p>
+              <p className="text-muted-foreground text-sm">View counter transactions and process customer returns/refunds.</p>
             </div>
             <div className="bg-card rounded-2xl border p-6">
               <div className="space-y-3">
-                {initialOrders.map(order => (
+                {ordersList.map((order: any) => (
                   <div key={order.id} className="flex justify-between items-center p-4 rounded-xl border bg-muted/20 text-sm">
                     <div>
-                      <p className="font-bold text-base">{order.orderNumber}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString()} • {order.itemsCount} items</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-base">{order.orderNumber}</p>
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                          order.status === 'Returned' ? 'bg-destructive/10 text-destructive' :
+                          order.status === 'Partially Returned' ? 'bg-orange-500/10 text-orange-500' :
+                          'bg-emerald-500/10 text-emerald-600'
+                        }`}>
+                          {order.status || 'Completed'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {new Date(order.createdAt).toLocaleString()} • {order.paymentMethod || 'Cash'}
+                      </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold text-primary text-base">Rs {order.total}</p>
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 text-xs font-bold">{order.paymentMethod} • Completed</span>
+
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="font-bold text-primary text-base">Rs {order.total}</p>
+                        <p className="text-xs text-muted-foreground">{order.items?.length ?? order.itemsCount ?? 0} items</p>
+                      </div>
+
+                      {order.status !== 'Returned' && order.items && order.items.length > 0 && (
+                        <button
+                          onClick={() => setSelectedReturnOrder(order)}
+                          className="px-3 py-1.5 rounded-xl border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 text-xs font-bold transition-all flex items-center gap-1.5"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" /> Return / Refund
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -827,6 +871,21 @@ const AdminDashboard = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {/* SALES RETURN MODAL */}
+      {selectedReturnOrder && (
+        <ReturnModal
+          order={selectedReturnOrder}
+          onClose={() => setSelectedReturnOrder(null)}
+          onReturnSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['orders'] });
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: ['stock'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+            queryClient.invalidateQueries({ queryKey: ['stock-logs'] });
+          }}
+        />
       )}
     </AdminSidebar>
   );

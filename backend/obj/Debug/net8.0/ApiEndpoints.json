@@ -110,6 +110,27 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "PosProSuite.Api.Controllers.OrdersController",
+    "Method": "ReturnOrderItems",
+    "RelativePath": "api/Orders/{id}/return",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Int32",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "PosProSuite.Api.Controllers.ReturnOrderRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "PosProSuite.Api.Controllers.ProductsController",
     "Method": "GetProducts",
     "RelativePath": "api/Products",
