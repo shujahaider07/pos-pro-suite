@@ -16,14 +16,34 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult> GetDashboard()
+    public async Task<ActionResult> GetDashboard([FromQuery] string? cashier = null, [FromQuery] string? role = null)
     {
         var now = DateTime.UtcNow;
         var today = now.Date;
         var weekStart = today.AddDays(-(int)today.DayOfWeek);
         var monthStart = new DateTime(today.Year, today.Month, 1);
 
-        var completedOrders = _context.Orders.Where(o => o.Status == "Completed");
+        var query = _context.Orders.Where(o => o.Status == "Completed");
+
+        if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(cashier))
+            {
+                var normalized = cashier.Trim().ToLower();
+                query = query.Where(o =>
+                    (o.CashierName != null && o.CashierName.ToLower() == normalized) ||
+                    (o.CashierEmail != null && o.CashierEmail.ToLower() == normalized));
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(cashier) && cashier.ToLower() != "all")
+        {
+            var normalized = cashier.Trim().ToLower();
+            query = query.Where(o =>
+                (o.CashierName != null && o.CashierName.ToLower() == normalized) ||
+                (o.CashierEmail != null && o.CashierEmail.ToLower() == normalized));
+        }
+
+        var completedOrders = query;
 
         var todayOrders   = completedOrders.Where(o => o.CreatedAt >= today);
         var weekOrders    = completedOrders.Where(o => o.CreatedAt >= weekStart);
@@ -38,6 +58,20 @@ public class DashboardController : ControllerBase
         var avgOrderValue = totalOrders > 0
             ? await completedOrders.AverageAsync(o => o.TotalAmount)
             : 0;
+
+        // Cashier sales breakdown (for admin overview)
+        var allOrdersForBreakdown = _context.Orders.AsQueryable();
+        var cashierPerformance = await allOrdersForBreakdown
+            .GroupBy(o => string.IsNullOrWhiteSpace(o.CashierName) ? "Staff" : o.CashierName)
+            .Select(g => new
+            {
+                cashier = g.Key,
+                totalSales = g.Where(o => o.Status == "Completed").Sum(o => o.TotalAmount),
+                completedOrders = g.Count(o => o.Status == "Completed"),
+                returnedOrders = g.Count(o => o.Status == "Returned" || o.Status == "Partially Returned")
+            })
+            .OrderByDescending(c => c.totalSales)
+            .ToListAsync();
 
         // Top selling items
         var topItems = await _context.OrderItems
@@ -80,7 +114,7 @@ public class DashboardController : ControllerBase
             .Select(g => new { method = g.Key, count = g.Count(), total = g.Sum(o => o.TotalAmount) })
             .ToListAsync();
 
-        // Stock alerts — products with stock <= 5
+        // Stock alerts
         var lowStockCount = await _context.Products.CountAsync(p => p.StockQuantity <= 5);
         var lowStockItems = await _context.Products
             .Where(p => p.StockQuantity <= 5)
@@ -89,7 +123,6 @@ public class DashboardController : ControllerBase
             .Take(5)
             .ToListAsync();
 
-        // Out-of-stock count
         var outOfStockCount = await _context.Products.CountAsync(p => p.StockQuantity == 0);
 
         return Ok(new
@@ -100,6 +133,7 @@ public class DashboardController : ControllerBase
             totalOrders,
             todayOrderCount,
             avgOrderValue,
+            cashierPerformance,
             topItems,
             salesTrend = salesTrend.Select(x => new { day = x.day.ToString("ddd"), sales = x.sales }),
             categoryPerformance = categoryPercentages,

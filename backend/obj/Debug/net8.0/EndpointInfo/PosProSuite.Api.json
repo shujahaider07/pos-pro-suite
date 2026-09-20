@@ -82,6 +82,22 @@
         "tags": [
           "Dashboard"
         ],
+        "parameters": [
+          {
+            "name": "cashier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -93,6 +109,22 @@
       "get": {
         "tags": [
           "Orders"
+        ],
+        "parameters": [
+          {
+            "name": "cashier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -501,6 +533,14 @@
           "paymentMethod": {
             "type": "string",
             "nullable": true
+          },
+          "cashierName": {
+            "type": "string",
+            "nullable": true
+          },
+          "cashierEmail": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -609,6 +649,10 @@
             "items": {
               "$ref": "#/components/schemas/ReturnItemRequest"
             },
+            "nullable": true
+          },
+          "cashierName": {
+            "type": "string",
             "nullable": true
           }
         },

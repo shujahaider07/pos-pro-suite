@@ -1,11 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   TrendingUp, DollarSign, ShoppingBag, BarChart3,
   Plus, Search, Trash2, X, Users,
   FolderTree, FileText, Settings as SettingsIcon,
-  Boxes, AlertTriangle, ArrowUpRight, History
+  Boxes, AlertTriangle, ArrowUpRight, History, UserCheck, Filter, Printer, Download
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -27,6 +27,7 @@ const COLORS = ['hsl(234,89%,56%)', 'hsl(152,69%,40%)', 'hsl(38,92%,50%)', 'hsl(
 
 const AdminDashboard = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5001';
 
@@ -40,7 +41,7 @@ const AdminDashboard = () => {
     price: 50,
     category: 'snacks',
     subcategory: 'Chips',
-    image: '🍿',
+    image: '📦',
     available: true,
     stockQuantity: 50,
     barcode: '',
@@ -54,17 +55,44 @@ const AdminDashboard = () => {
   // Categories State
   const [categoriesList, setCategoriesList] = useState<Category[]>(initialCategories);
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
-  const [newCategory, setNewCategory] = useState({ id: '', name: '', icon: '🛒', subcategories: '' });
+  const [newCategory, setNewCategory] = useState({ id: '', name: '', icon: '🏪', subcategories: '' });
 
   // Return Modal State
   const [selectedReturnOrder, setSelectedReturnOrder] = useState<any | null>(null);
 
-  // Orders Query
+  // Cashier Filter for Sales & Performance
+  const [selectedCashierFilter, setSelectedCashierFilter] = useState<string>('all');
+
+  // Active Tab Sync with Sidebar pathname & hash
+  const activeTab = useMemo(() => {
+    const path = location.pathname.toLowerCase();
+    if (path.includes('/admin/stock') || path.includes('/admin/inventory') || path.includes('/admin/products')) {
+      return 'inventory';
+    }
+    if (path.includes('/admin/categories')) return 'categories';
+    if (path.includes('/admin/sales')) return 'sales';
+    if (path.includes('/admin/employees') || path.includes('/admin/staff')) return 'employees';
+    if (path.includes('/admin/reports')) return 'reports';
+    if (path.includes('/admin/settings')) return 'settings';
+
+    // Hash fallback
+    const hash = location.hash.replace('#', '').toLowerCase();
+    if (hash === 'products' || hash === 'stock' || hash === 'inventory') return 'inventory';
+    if (hash === 'categories') return 'categories';
+    if (hash === 'sales') return 'sales';
+    if (hash === 'employees' || hash === 'staff') return 'employees';
+    if (hash === 'reports') return 'reports';
+    if (hash === 'settings') return 'settings';
+
+    return 'overview';
+  }, [location.pathname, location.hash]);
+
+  // Orders Query (Admin fetches all orders)
   const { data: ordersList = initialOrders } = useQuery({
     queryKey: ['orders'],
     queryFn: async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/orders`);
+        const res = await fetch(`${API_BASE_URL}/api/orders?role=admin`);
         if (!res.ok) return initialOrders;
         const data = await res.json();
         return Array.isArray(data) && data.length > 0 ? data : initialOrders;
@@ -90,12 +118,17 @@ const AdminDashboard = () => {
     status: 'active' as const,
   });
 
-  // Fetch live stock & dashboard data from backend
+  // Fetch live dashboard data from backend
   const { data: dashboardData = mockStats } = useQuery({
-    queryKey: ['dashboard'],
+    queryKey: ['dashboard', selectedCashierFilter],
     queryFn: async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/dashboard`);
+        const params = new URLSearchParams();
+        params.append('role', 'admin');
+        if (selectedCashierFilter !== 'all') {
+          params.append('cashier', selectedCashierFilter);
+        }
+        const res = await fetch(`${API_BASE_URL}/api/dashboard?${params.toString()}`);
         if (!res.ok) return mockStats;
         return res.json();
       } catch {
@@ -105,129 +138,143 @@ const AdminDashboard = () => {
     initialData: mockStats,
   });
 
-  const { data: stockLogs = [] } = useQuery({
-    queryKey: ['stock-logs'],
+  // Unique Cashiers list for filtering
+  const uniqueCashiers = useMemo(() => {
+    const set = new Set<string>();
+    staffList.forEach(s => s.name && set.add(s.name));
+    ordersList.forEach((o: any) => o.cashierName && set.add(o.cashierName));
+    return Array.from(set);
+  }, [staffList, ordersList]);
+
+  // Filtered Orders according to cashier filter
+  const filteredOrdersList = useMemo(() => {
+    if (selectedCashierFilter === 'all') return ordersList;
+    const filter = selectedCashierFilter.toLowerCase();
+    return ordersList.filter((o: any) =>
+      (o.cashierName && o.cashierName.toLowerCase() === filter) ||
+      (o.cashierEmail && o.cashierEmail.toLowerCase() === filter)
+    );
+  }, [ordersList, selectedCashierFilter]);
+
+  // Fetch live products
+  const { data: fetchedProducts } = useQuery<Product[]>({
+    queryKey: ['products'],
     queryFn: async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/stock/logs`);
-        if (!res.ok) return [];
-        return res.json();
+        const res = await fetch(`${API_BASE_URL}/api/products`);
+        if (!res.ok) return initialProducts;
+        const data = await res.json();
+        return Array.isArray(data) && data.length > 0 ? data : initialProducts;
       } catch {
-        return [];
+        return initialProducts;
       }
     },
+    initialData: initialProducts,
   });
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/products`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setProductsList(data);
-        }
-      })
-      .catch(() => {});
+    if (fetchedProducts && fetchedProducts.length > 0) {
+      setProductsList(fetchedProducts);
+    }
+  }, [fetchedProducts]);
 
-    fetch(`${API_BASE_URL}/api/categories`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setCategoriesList(data);
-        }
-      })
-      .catch(() => {});
-  }, [API_BASE_URL]);
+  // Fetch live categories
+  const { data: fetchedCategories } = useQuery<Category[]>({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/categories`);
+        if (!res.ok) return initialCategories;
+        const data = await res.json();
+        return Array.isArray(data) && data.length > 0 ? data : initialCategories;
+      } catch {
+        return initialCategories;
+      }
+    },
+    initialData: initialCategories,
+  });
 
-  const activeTab = useMemo(() => {
-    const path = location.pathname;
-    if (path.includes('/sales')) return 'sales';
-    if (path.includes('/products')) return 'products';
-    if (path.includes('/categories')) return 'categories';
-    if (path.includes('/stock')) return 'stock';
-    if (path.includes('/employees')) return 'employees';
-    if (path.includes('/reports')) return 'reports';
-    if (path.includes('/settings')) return 'settings';
-    return 'overview';
-  }, [location.pathname]);
+  useEffect(() => {
+    if (fetchedCategories && fetchedCategories.length > 0) {
+      setCategoriesList(fetchedCategories);
+    }
+  }, [fetchedCategories]);
 
+  // Filtered Products
   const filteredProducts = useMemo(() => {
-    return productsList.filter(p => {
-      const matchCat = selectedProductCategory === 'all' || p.category === selectedProductCategory || p.categoryId === selectedProductCategory;
-      const matchSearch = p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.barcode && p.barcode.includes(productSearch));
-      return matchCat && matchSearch;
-    });
+    let list = productsList;
+    if (selectedProductCategory !== 'all') {
+      list = list.filter(p => p.category === selectedProductCategory || p.categoryId === selectedProductCategory);
+    }
+    if (productSearch.trim()) {
+      const q = productSearch.toLowerCase();
+      list = list.filter(p => p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q)));
+    }
+    return list;
   }, [productsList, selectedProductCategory, productSearch]);
 
-  // Handle Add Product
   const handleCreateProduct = async () => {
-    if (!newProduct.name || !newProduct.price) {
-      toast.error('Product name and price are required');
+    if (!newProduct.name.trim() || newProduct.price <= 0) {
+      toast.error('Please provide a valid product name and price.');
       return;
     }
-    const created: Product = {
-      id: Date.now(),
-      name: newProduct.name,
-      price: Number(newProduct.price),
-      category: newProduct.category,
-      categoryId: newProduct.category,
-      subcategory: newProduct.subcategory,
-      image: newProduct.image || '🛒',
-      available: newProduct.available,
-      stockQuantity: Number(newProduct.stockQuantity) || 0,
-      barcode: newProduct.barcode,
-    };
-
     try {
-      await fetch(`${API_BASE_URL}/api/products`, {
+      const res = await fetch(`${API_BASE_URL}/api/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(created),
+        body: JSON.stringify(newProduct),
       });
-    } catch {}
-
-    setProductsList(prev => [created, ...prev]);
+      if (res.ok) {
+        toast.success(`Product "${newProduct.name}" created successfully!`);
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      }
+    } catch {
+      setProductsList(prev => [...prev, { ...newProduct, id: Date.now() }]);
+      toast.success('Product saved locally');
+    }
     setShowAddProductModal(false);
-    toast.success('Product created successfully!');
+    setNewProduct({ name: '', price: 50, category: 'snacks', subcategory: 'Chips', image: '📦', available: true, stockQuantity: 50, barcode: '' });
   };
 
-  // Handle Add Category
-  const handleCreateCategory = () => {
-    if (!newCategory.name) {
-      toast.error('Category name is required');
+  const handleCreateCategory = async () => {
+    if (!newCategory.name.trim()) {
+      toast.error('Please provide a category name.');
       return;
     }
-    const catId = newCategory.id || newCategory.name.toLowerCase().replace(/\s+/g, '-');
-    const subcats = newCategory.subcategories ? newCategory.subcategories.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const created: Category = {
-      id: catId,
-      name: newCategory.name,
-      icon: newCategory.icon || '🛒',
-      subcategories: subcats,
-    };
-
-    setCategoriesList(prev => [...prev, created]);
+    const catId = newCategory.id.trim() || newCategory.name.toLowerCase().replace(/\s+/g, '-');
+    const subs = newCategory.subcategories ? newCategory.subcategories.split(',').map(s => s.trim()).filter(Boolean) : [];
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: catId, name: newCategory.name, icon: newCategory.icon || '🏪', subcategories: subs }),
+      });
+      if (res.ok) {
+        toast.success(`Category "${newCategory.name}" created!`);
+        queryClient.invalidateQueries({ queryKey: ['categories'] });
+      }
+    } catch {
+      setCategoriesList(prev => [...prev, { id: catId, name: newCategory.name, icon: newCategory.icon || '🏪', subcategories: subs }]);
+      toast.success('Category saved locally');
+    }
     setShowAddCategoryModal(false);
-    setNewCategory({ id: '', name: '', icon: '🛒', subcategories: '' });
-    toast.success('Category created successfully!');
+    setNewCategory({ id: '', name: '', icon: '🏪', subcategories: '' });
   };
 
-  // Add Stock Mutation
   const addStockMutation = useMutation({
     mutationFn: async ({ productId, qty }: { productId: number; qty: number }) => {
-      const res = await fetch(`${API_BASE_URL}/api/stock/${productId}/add`, {
+      const res = await fetch(`${API_BASE_URL}/api/stock/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: qty, reason: 'StockIn' }),
+        body: JSON.stringify({ productId, quantityToAdd: qty, reason: 'Restock / Purchase' }),
       });
-      if (!res.ok) throw new Error('Failed to add stock');
+      if (!res.ok) throw new Error('Stock update failed');
       return res.json();
     },
-    onSuccess: (_, vars) => {
-      setProductsList(prev =>
-        prev.map(p => (p.id === vars.productId ? { ...p, stockQuantity: (p.stockQuantity ?? 0) + vars.qty, available: true } : p))
-      );
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['stock-logs'] });
       setShowAddStockModal(false);
       toast.success(`Added ${vars.qty} stock units!`);
     },
@@ -248,16 +295,36 @@ const AdminDashboard = () => {
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
           <>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Tuck Shop Dashboard</h1>
-              <p className="text-muted-foreground text-sm">Real-time overview of counter sales, revenue & stock alerts.</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Tuck Shop Dashboard</h1>
+                <p className="text-muted-foreground text-sm">Real-time overview of counter sales, revenue & stock alerts.</p>
+              </div>
+
+              {/* Cashier Filter Dropdown */}
+              <div className="flex items-center gap-2 bg-card border px-3 py-2 rounded-xl shadow-sm">
+                <Filter className="w-4 h-4 text-primary" />
+                <span className="text-xs font-semibold text-muted-foreground">Cashier:</span>
+                <select
+                  value={selectedCashierFilter}
+                  onChange={e => setSelectedCashierFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
+                >
+                  <option value="all">All Cashiers (Store Consolidated)</option>
+                  {uniqueCashiers.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-card rounded-2xl border p-5 space-y-3">
                 <div className="flex justify-between items-center text-muted-foreground">
-                  <span className="text-xs font-semibold uppercase">Today's Sales</span>
+                  <span className="text-xs font-semibold uppercase">
+                    {selectedCashierFilter === 'all' ? "Today's Total Sales" : `${selectedCashierFilter}'s Today Sales`}
+                  </span>
                   <DollarSign className="w-4 h-4 text-emerald-500" />
                 </div>
                 <p className="text-2xl font-bold text-gradient-primary">Rs {(dashboardData.todayRevenue ?? 4850).toLocaleString()}</p>
@@ -268,11 +335,13 @@ const AdminDashboard = () => {
 
               <div className="bg-card rounded-2xl border p-5 space-y-3">
                 <div className="flex justify-between items-center text-muted-foreground">
-                  <span className="text-xs font-semibold uppercase">Total Transactions</span>
+                  <span className="text-xs font-semibold uppercase">Completed Transactions</span>
                   <ShoppingBag className="w-4 h-4 text-primary" />
                 </div>
                 <p className="text-2xl font-bold">{dashboardData.todayOrderCount ?? dashboardData.totalOrders ?? 42}</p>
-                <div className="text-xs text-muted-foreground font-medium">Completed Sales</div>
+                <div className="text-xs text-muted-foreground font-medium">
+                  {selectedCashierFilter === 'all' ? 'All Staff Sales' : `By ${selectedCashierFilter}`}
+                </div>
               </div>
 
               <div className="bg-card rounded-2xl border p-5 space-y-3">
@@ -281,7 +350,7 @@ const AdminDashboard = () => {
                   <AlertTriangle className="w-4 h-4 text-orange-500" />
                 </div>
                 <p className="text-2xl font-bold text-orange-500">{dashboardData.lowStockCount ?? 3}</p>
-                <div className="text-xs text-orange-500 font-medium">Items with ≤ 5 stock left</div>
+                <div className="text-xs text-orange-500 font-medium">Items with &le; 5 stock left</div>
               </div>
 
               <div className="bg-card rounded-2xl border p-5 space-y-3">
@@ -293,6 +362,44 @@ const AdminDashboard = () => {
                 <div className="text-xs text-muted-foreground font-medium">This Month Total</div>
               </div>
             </div>
+
+            {/* Employee Performance Breakdown Card */}
+            {dashboardData.cashierPerformance && dashboardData.cashierPerformance.length > 0 && (
+              <div className="bg-card rounded-2xl border p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-base flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-primary" /> Cashier / Employee Sales Breakdown
+                  </h3>
+                  <span className="text-xs text-muted-foreground">Individual Cashier Performance</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {dashboardData.cashierPerformance.map((cp: any) => (
+                    <div
+                      key={cp.cashier}
+                      onClick={() => setSelectedCashierFilter(cp.cashier === selectedCashierFilter ? 'all' : cp.cashier)}
+                      className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                        selectedCashierFilter === cp.cashier
+                          ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                          : 'bg-muted/30 hover:border-primary/40'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-bold text-sm">{cp.cashier}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+                          {cp.completedOrders ?? cp.totalOrders ?? 0} Sales
+                        </span>
+                      </div>
+                      <p className="text-xl font-bold text-primary">Rs {(cp.totalSales ?? 0).toLocaleString()}</p>
+                      {cp.returnedOrders > 0 && (
+                        <p className="text-[11px] text-orange-500 mt-1">
+                          {cp.returnedOrders} Return(s) processed
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -335,179 +442,109 @@ const AdminDashboard = () => {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="space-y-1.5 pt-2">
-                  {(dashboardData.categoryPerformance ?? mockStats.categoryPerformance).slice(0, 4).map((c: any, i: number) => (
-                    <div key={i} className="flex justify-between items-center text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                        <span className="font-medium">{c.name}</span>
-                      </div>
-                      <span className="font-bold">{c.value}%</span>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           </>
         )}
 
-        {/* STOCK & INVENTORY TAB */}
-        {activeTab === 'stock' && (
+        {/* INVENTORY / PRODUCTS / STOCK TAB */}
+        {activeTab === 'inventory' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                  <Boxes className="w-6 h-6 text-primary" /> Stock & Inventory Management
+                  <Boxes className="w-6 h-6 text-primary" /> Inventory & Products
                 </h1>
-                <p className="text-muted-foreground text-sm">Add new stock when supplies arrive & monitor low stock alerts.</p>
-              </div>
-            </div>
-
-            {/* Stock Table */}
-            <div className="bg-card rounded-2xl border overflow-hidden">
-              <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
-                <h3 className="font-bold text-sm">All Products Inventory Level</h3>
-                <span className="text-xs text-muted-foreground">Total: {productsList.length} items</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
-                    <tr>
-                      <th className="p-4">Item</th>
-                      <th className="p-4">Category</th>
-                      <th className="p-4">Price</th>
-                      <th className="p-4">Barcode</th>
-                      <th className="p-4">Current Stock</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {productsList.map(prod => {
-                      const stock = prod.stockQuantity ?? 0;
-                      const isLow = stock <= 5 && stock > 0;
-                      const isOut = stock === 0 || !prod.available;
-
-                      return (
-                        <tr key={prod.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="p-4 font-semibold flex items-center gap-3">
-                            <span className="text-2xl p-1.5 rounded-lg bg-muted">{prod.image}</span>
-                            {prod.name}
-                          </td>
-                          <td className="p-4 text-muted-foreground capitalize">{prod.category}</td>
-                          <td className="p-4 font-bold">Rs {prod.price}</td>
-                          <td className="p-4 font-mono text-xs text-muted-foreground">{prod.barcode || '—'}</td>
-                          <td className="p-4 font-bold text-base">{stock} units</td>
-                          <td className="p-4">
-                            {isOut ? (
-                              <span className="px-2.5 py-1 rounded-full bg-destructive/10 text-destructive text-xs font-bold">Out of Stock</span>
-                            ) : isLow ? (
-                              <span className="px-2.5 py-1 rounded-full bg-orange-500/10 text-orange-500 text-xs font-bold">Low Stock (≤5)</span>
-                            ) : (
-                              <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-bold">In Stock</span>
-                            )}
-                          </td>
-                          <td className="p-4 text-right">
-                            <button
-                              onClick={() => {
-                                setSelectedStockProduct(prod);
-                                setShowAddStockModal(true);
-                              }}
-                              className="px-3 py-1.5 rounded-xl gradient-primary text-primary-foreground text-xs font-bold shadow-soft hover:opacity-90 transition-opacity flex items-center gap-1 ml-auto"
-                            >
-                              <ArrowUpRight className="w-3.5 h-3.5" /> Add Stock
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Stock History Logs */}
-            {stockLogs.length > 0 && (
-              <div className="bg-card rounded-2xl border p-6 space-y-4">
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <History className="w-5 h-5 text-primary" /> Stock Activity Logs
-                </h3>
-                <div className="space-y-2">
-                  {stockLogs.slice(0, 10).map((log: any) => (
-                    <div key={log.id} className="flex justify-between items-center p-3 rounded-xl bg-muted/40 text-xs">
-                      <div>
-                        <span className="font-bold">{log.productName}</span>
-                        <span className="text-muted-foreground ml-2">({log.reason})</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className={`font-bold ${log.quantityChange > 0 ? 'text-emerald-500' : 'text-destructive'}`}>
-                          {log.quantityChange > 0 ? `+${log.quantityChange}` : log.quantityChange} units
-                        </span>
-                        <span className="text-muted-foreground">{new Date(log.createdAt).toLocaleTimeString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* PRODUCTS MANAGEMENT TAB */}
-        {activeTab === 'products' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">Products Catalog</h1>
-                <p className="text-muted-foreground text-sm">Manage tuck shop items, prices, barcodes and availability.</p>
+                <p className="text-muted-foreground text-sm">Manage tuck shop items, live stock units & barcodes.</p>
               </div>
               <button
                 onClick={() => setShowAddProductModal(true)}
-                className="px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs shadow-soft hover:opacity-95 transition-opacity flex items-center gap-2"
+                className="h-11 px-4 rounded-xl gradient-primary text-primary-foreground font-semibold flex items-center gap-2 shadow-soft hover:opacity-90 transition-opacity"
               >
                 <Plus className="w-4 h-4" /> Add New Item
               </button>
             </div>
 
-            {/* Search & Category Filter */}
-            <div className="flex gap-3">
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="text"
                   value={productSearch}
                   onChange={e => setProductSearch(e.target.value)}
-                  placeholder="Search item by name or scan barcode..."
-                  className="w-full h-11 pl-10 pr-4 rounded-xl border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="Search item name or barcode..."
+                  className="w-full h-11 pl-10 pr-4 rounded-xl border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
-              <select
-                value={selectedProductCategory}
-                onChange={e => setSelectedProductCategory(e.target.value)}
-                className="h-11 px-4 rounded-xl border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="all">All Categories</option>
+              <div className="flex gap-2 overflow-x-auto pos-scrollbar pb-1">
+                <button
+                  onClick={() => setSelectedProductCategory('all')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                    selectedProductCategory === 'all'
+                      ? 'gradient-primary text-primary-foreground'
+                      : 'bg-card border hover:bg-muted text-muted-foreground'
+                  }`}
+                >
+                  All
+                </button>
                 {categoriesList.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedProductCategory(c.id)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      selectedProductCategory === c.id
+                        ? 'gradient-primary text-primary-foreground'
+                        : 'bg-card border hover:bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    <span>{c.icon}</span>
+                    <span>{c.name}</span>
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
 
-            {/* Products Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredProducts.map(prod => (
-                <div key={prod.id} className="bg-card rounded-2xl border p-4 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <span className="text-3xl p-2 rounded-xl bg-muted">{prod.image}</span>
-                    <span className="text-xs font-mono px-2 py-1 rounded bg-muted text-muted-foreground">{prod.barcode || 'No Barcode'}</span>
+            {/* Products Table / Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredProducts.map(p => (
+                <div key={p.id} className="bg-card rounded-2xl border p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center text-2xl">
+                        {p.image || '📦'}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm">{p.name}</h4>
+                        <p className="text-xs text-muted-foreground">{p.subcategory || p.category}</p>
+                      </div>
+                    </div>
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      (p.stockQuantity ?? 0) <= 0
+                        ? 'bg-destructive/10 text-destructive'
+                        : (p.stockQuantity ?? 0) <= 5
+                        ? 'bg-orange-500/10 text-orange-500'
+                        : 'bg-emerald-500/10 text-emerald-600'
+                    }`}>
+                      {(p.stockQuantity ?? 0) <= 0 ? 'Out of Stock' : `${p.stockQuantity} in stock`}
+                    </span>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-base">{prod.name}</h4>
-                    <p className="text-xs text-muted-foreground capitalize">{prod.category} • {prod.subcategory || 'General'}</p>
+
+                  <div className="flex justify-between items-center pt-2 border-t text-xs">
+                    <span className="font-mono text-muted-foreground">{p.barcode || 'No Barcode'}</span>
+                    <span className="text-base font-bold text-primary">Rs {p.price}</span>
                   </div>
-                  <div className="flex justify-between items-center pt-2 border-t text-sm">
-                    <span className="font-bold text-primary">Rs {prod.price}</span>
-                    <span className="text-xs font-semibold">Stock: {prod.stockQuantity ?? 0}</span>
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => {
+                        setSelectedStockProduct(p);
+                        setShowAddStockModal(true);
+                      }}
+                      className="flex-1 py-2 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Stock
+                    </button>
                   </div>
                 </div>
               ))}
@@ -515,39 +552,38 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* CATEGORIES MANAGEMENT TAB */}
+        {/* CATEGORIES TAB */}
         {activeTab === 'categories' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                  <FolderTree className="w-6 h-6 text-primary" /> Categories Management
+                  <FolderTree className="w-6 h-6 text-primary" /> Tuck Shop Categories
                 </h1>
-                <p className="text-muted-foreground text-sm">Organize tuck shop items by categories and subcategories.</p>
+                <p className="text-muted-foreground text-sm">Organize snacks, beverages, stationery & dairy sections.</p>
               </div>
               <button
                 onClick={() => setShowAddCategoryModal(true)}
-                className="px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs shadow-soft hover:opacity-95 transition-opacity flex items-center gap-2"
+                className="h-11 px-4 rounded-xl gradient-primary text-primary-foreground font-semibold flex items-center gap-2 shadow-soft hover:opacity-90 transition-opacity"
               >
                 <Plus className="w-4 h-4" /> Add Category
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {categoriesList.map(cat => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {categoriesList.filter(c => c.id !== 'all').map(cat => (
                 <div key={cat.id} className="bg-card rounded-2xl border p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-3xl p-2 rounded-xl bg-muted">{cat.icon}</span>
-                      <div>
-                        <h3 className="font-bold text-base">{cat.name}</h3>
-                        <p className="text-xs text-muted-foreground">ID: {cat.id}</p>
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl p-2.5 rounded-xl bg-accent">{cat.icon}</span>
+                    <div>
+                      <h3 className="font-bold text-base">{cat.name}</h3>
+                      <p className="text-xs text-muted-foreground">{cat.subcategories?.length ?? 0} subcategories</p>
                     </div>
                   </div>
+
                   {cat.subcategories && cat.subcategories.length > 0 && (
                     <div className="pt-3 border-t">
-                      <p className="text-xs font-semibold text-muted-foreground mb-2">Subcategories:</p>
+                      <p className="text-xs text-muted-foreground font-medium mb-2">Subcategories:</p>
                       <div className="flex flex-wrap gap-1.5">
                         {cat.subcategories.map(sub => (
                           <span key={sub} className="px-2.5 py-1 rounded-lg bg-muted text-xs font-medium">
@@ -566,49 +602,74 @@ const AdminDashboard = () => {
         {/* SALES HISTORY TAB */}
         {activeTab === 'sales' && (
           <div className="space-y-6">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                <BarChart3 className="w-6 h-6 text-primary" /> Sales & Order History
-              </h1>
-              <p className="text-muted-foreground text-sm">View counter transactions and process customer returns/refunds.</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                  <BarChart3 className="w-6 h-6 text-primary" /> Sales & Order History
+                </h1>
+                <p className="text-muted-foreground text-sm">View counter transactions and process customer returns/refunds.</p>
+              </div>
+
+              {/* Cashier Filter */}
+              <div className="flex items-center gap-2 bg-card border px-3 py-2 rounded-xl shadow-sm">
+                <Filter className="w-4 h-4 text-primary" />
+                <span className="text-xs font-semibold text-muted-foreground">Filter Cashier:</span>
+                <select
+                  value={selectedCashierFilter}
+                  onChange={e => setSelectedCashierFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
+                >
+                  <option value="all">All Cashiers / Staff</option>
+                  {uniqueCashiers.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
             </div>
+
             <div className="bg-card rounded-2xl border p-6">
               <div className="space-y-3">
-                {ordersList.map((order: any) => (
-                  <div key={order.id} className="flex justify-between items-center p-4 rounded-xl border bg-muted/20 text-sm">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-base">{order.orderNumber}</p>
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                          order.status === 'Returned' ? 'bg-destructive/10 text-destructive' :
-                          order.status === 'Partially Returned' ? 'bg-orange-500/10 text-orange-500' :
-                          'bg-emerald-500/10 text-emerald-600'
-                        }`}>
-                          {order.status || 'Completed'}
-                        </span>
+                {filteredOrdersList.length === 0 ? (
+                  <p className="text-center py-12 text-sm text-muted-foreground">
+                    No orders found {selectedCashierFilter !== 'all' ? `for cashier "${selectedCashierFilter}"` : ''}.
+                  </p>
+                ) : (
+                  filteredOrdersList.map((order: any) => (
+                    <div key={order.id} className="flex justify-between items-center p-4 rounded-xl border bg-muted/20 text-sm">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-base">{order.orderNumber}</p>
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                            order.status === 'Returned' ? 'bg-destructive/10 text-destructive' :
+                            order.status === 'Partially Returned' ? 'bg-orange-500/10 text-orange-500' :
+                            'bg-emerald-500/10 text-emerald-600'
+                          }`}>
+                            {order.status || 'Completed'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {new Date(order.createdAt).toLocaleString()} • {order.paymentMethod || 'Cash'} • <span className="font-semibold text-primary">Cashier: {order.cashierName || 'Staff'}</span>
+                        </p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {new Date(order.createdAt).toLocaleString()} • {order.paymentMethod || 'Cash'}
-                      </p>
-                    </div>
 
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="font-bold text-primary text-base">Rs {order.total}</p>
-                        <p className="text-xs text-muted-foreground">{order.items?.length ?? order.itemsCount ?? 0} items</p>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="font-bold text-primary text-base">Rs {order.total}</p>
+                          <p className="text-xs text-muted-foreground">{order.items?.length ?? order.itemsCount ?? 0} items</p>
+                        </div>
+
+                        {order.status !== 'Returned' && order.items && order.items.length > 0 && (
+                          <button
+                            onClick={() => setSelectedReturnOrder(order)}
+                            className="px-3 py-1.5 rounded-xl border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 text-xs font-bold transition-all flex items-center gap-1.5"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" /> Return / Refund
+                          </button>
+                        )}
                       </div>
-
-                      {order.status !== 'Returned' && order.items && order.items.length > 0 && (
-                        <button
-                          onClick={() => setSelectedReturnOrder(order)}
-                          className="px-3 py-1.5 rounded-xl border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 text-xs font-bold transition-all flex items-center gap-1.5"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" /> Return / Refund
-                        </button>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -643,34 +704,82 @@ const AdminDashboard = () => {
         {/* REPORTS TAB */}
         {activeTab === 'reports' && (
           <div className="space-y-6">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                <FileText className="w-6 h-6 text-primary" /> Reports & Analytics
-              </h1>
-              <p className="text-muted-foreground text-sm">Sales summaries, payment breakdowns, and top items.</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-card rounded-2xl border p-6 space-y-4">
-                <h3 className="font-bold text-base">Top Selling Products</h3>
-                <div className="space-y-2">
-                  {(dashboardData.topItems ?? mockStats.topItems).map((item: any, i: number) => (
-                    <div key={i} className="flex justify-between items-center p-3 rounded-xl bg-muted/30 text-xs font-medium">
-                      <span>{item.name} ({item.quantity} sold)</span>
-                      <span className="font-bold text-primary">Rs {item.revenue}</span>
-                    </div>
-                  ))}
-                </div>
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                  <FileText className="w-6 h-6 text-primary" /> Financial & Sales Reports
+                </h1>
+                <p className="text-muted-foreground text-sm">Consolidated summaries of counter revenue, inventory turnover and staff sales.</p>
               </div>
-              <div className="bg-card rounded-2xl border p-6 space-y-4">
-                <h3 className="font-bold text-base">Payment Method Breakdown</h3>
-                <div className="space-y-2">
-                  {(dashboardData.paymentBreakdown ?? mockStats.paymentBreakdown).map((pm: any, i: number) => (
-                    <div key={i} className="flex justify-between items-center p-3.5 rounded-xl bg-muted/30 text-xs font-bold">
-                      <span>{pm.method} Payments ({pm.count ?? 0} sales)</span>
-                      <span className="text-emerald-600">Rs {(pm.total ?? 0).toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
+              <button
+                onClick={() => window.print()}
+                className="h-10 px-4 rounded-xl border font-bold text-xs flex items-center gap-2 hover:bg-muted transition-colors"
+              >
+                <Printer className="w-4 h-4" /> Print Report
+              </button>
+            </div>
+
+            {/* Reports Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-card rounded-2xl border p-5 space-y-2">
+                <span className="text-xs text-muted-foreground uppercase font-semibold">Total Cumulative Sales</span>
+                <p className="text-2xl font-bold text-primary">Rs {(dashboardData.todayRevenue ?? 0).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Today's recorded sales</p>
+              </div>
+              <div className="bg-card rounded-2xl border p-5 space-y-2">
+                <span className="text-xs text-muted-foreground uppercase font-semibold">Monthly Total Revenue</span>
+                <p className="text-2xl font-bold text-emerald-600">Rs {(dashboardData.monthlyRevenue ?? 0).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Month-to-date total</p>
+              </div>
+              <div className="bg-card rounded-2xl border p-5 space-y-2">
+                <span className="text-xs text-muted-foreground uppercase font-semibold">Total Stock Units</span>
+                <p className="text-2xl font-bold">
+                  {productsList.reduce((s, p) => s + (p.stockQuantity ?? 0), 0)} Units
+                </p>
+                <p className="text-xs text-muted-foreground">Across {productsList.length} catalog items</p>
+              </div>
+            </div>
+
+            {/* Cashier Audit Table */}
+            <div className="bg-card rounded-2xl border p-6 space-y-4">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-primary" /> Staff Sales Summary Table
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b bg-muted/40 font-bold uppercase text-muted-foreground">
+                    <tr>
+                      <th className="p-3">Cashier / Staff</th>
+                      <th className="p-3">Role</th>
+                      <th className="p-3">Total Sales (Rs)</th>
+                      <th className="p-3">Completed Orders</th>
+                      <th className="p-3">Returns</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(dashboardData.cashierPerformance && dashboardData.cashierPerformance.length > 0) ? (
+                      dashboardData.cashierPerformance.map((cp: any) => (
+                        <tr key={cp.cashier} className="hover:bg-muted/20">
+                          <td className="p-3 font-bold">{cp.cashier}</td>
+                          <td className="p-3"><span className="px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold uppercase text-[10px]">Cashier</span></td>
+                          <td className="p-3 font-bold text-primary">Rs {(cp.totalSales ?? 0).toLocaleString()}</td>
+                          <td className="p-3 font-semibold">{cp.completedOrders ?? cp.totalOrders ?? 0}</td>
+                          <td className="p-3 text-orange-500 font-semibold">{cp.returnedOrders ?? 0}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      staffList.map(s => (
+                        <tr key={s.id} className="hover:bg-muted/20">
+                          <td className="p-3 font-bold">{s.name}</td>
+                          <td className="p-3"><span className="px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold uppercase text-[10px]">{s.role}</span></td>
+                          <td className="p-3 font-bold text-primary">Rs 0</td>
+                          <td className="p-3 font-semibold">0</td>
+                          <td className="p-3 text-orange-500 font-semibold">0</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -678,75 +787,34 @@ const AdminDashboard = () => {
 
         {/* SETTINGS TAB */}
         {activeTab === 'settings' && (
-          <div className="space-y-6">
+          <div className="space-y-6 max-w-xl">
             <div>
               <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                 <SettingsIcon className="w-6 h-6 text-primary" /> Tuck Shop Settings
               </h1>
-              <p className="text-muted-foreground text-sm">Configure GST tax rate, store information, and receipt details.</p>
+              <p className="text-muted-foreground text-sm">Configure GST tax rate, currency and thermal printer settings.</p>
             </div>
 
-            <div className="bg-card rounded-2xl border p-6 space-y-6 max-w-xl shadow-sm">
-              {/* GST Rate Config */}
-              <div className="space-y-3">
-                <label className="block text-sm font-bold text-foreground">
-                  GST Tax Rate (%) — Configurable
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Enter the GST percentage applied on checkout (0% for tax-free, 18% standard GST, etc.).
-                </p>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    value={gstRate}
-                    onChange={e => setGstRate(Number(e.target.value))}
-                    placeholder="Enter GST %..."
-                    className="w-32 h-11 px-4 text-center font-bold text-lg rounded-xl border bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    min="0"
-                    max="100"
-                  />
-                  <span className="font-bold text-lg text-primary">% GST</span>
-                </div>
-
-                {/* Preset Tax Rate Buttons */}
-                <div className="flex gap-2 pt-1">
-                  {[0, 5, 17, 18].map(rate => (
-                    <button
-                      key={rate}
-                      type="button"
-                      onClick={() => setGstRate(rate)}
-                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
-                        gstRate === rate
-                          ? 'bg-primary text-primary-foreground border-primary shadow-soft'
-                          : 'bg-muted/50 border-transparent hover:border-primary/30 text-muted-foreground'
-                      }`}
-                    >
-                      {rate === 0 ? '0% (Tax Free)' : `${rate}% GST`}
-                    </button>
-                  ))}
-                </div>
+            <div className="bg-card rounded-2xl border p-6 space-y-5">
+              <div className="space-y-2">
+                <label className="font-bold text-sm block">GST / Sales Tax Rate (%)</label>
+                <input
+                  type="number"
+                  value={gstRate}
+                  onChange={e => {
+                    const rate = Number(e.target.value);
+                    setGstRate(rate);
+                    setStoredTaxRate(rate);
+                  }}
+                  className="w-full h-11 px-4 rounded-xl border bg-muted/40 font-bold focus:outline-none"
+                />
+                <p className="text-xs text-muted-foreground">Set 0% for tax-free tuck shop sales, or enter current applicable rate.</p>
               </div>
-
-              <div className="border-t pt-4 space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground mb-1">Store Name</label>
-                  <input type="text" defaultValue={initialSettings.shopName} className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm font-semibold" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground mb-1">Receipt Footer Line</label>
-                  <input type="text" defaultValue={initialSettings.receiptFooter} className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm" />
-                </div>
-              </div>
-
               <button
-                type="button"
-                onClick={() => {
-                  setStoredTaxRate(gstRate);
-                  toast.success(`Settings saved! GST rate updated to ${gstRate}%.`);
-                }}
-                className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm shadow-soft hover:opacity-90 transition-opacity"
+                onClick={() => toast.success('Settings saved!')}
+                className="h-11 px-6 rounded-xl gradient-primary text-primary-foreground font-bold text-sm"
               >
-                Save Settings
+                Save Changes
               </button>
             </div>
           </div>
@@ -758,24 +826,23 @@ const AdminDashboard = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
           <div className="bg-card rounded-2xl p-6 w-full max-w-sm border shadow-float space-y-4">
             <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-bold text-lg">Add Stock Inventory</h3>
+              <h3 className="font-bold text-lg">Add Stock Units</h3>
               <button onClick={() => setShowAddStockModal(false)} className="p-1 rounded-lg hover:bg-muted">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="text-center py-2">
-              <span className="text-4xl">{selectedStockProduct.image}</span>
-              <h4 className="font-bold text-base mt-2">{selectedStockProduct.name}</h4>
-              <p className="text-xs text-muted-foreground">Current Stock: <strong>{selectedStockProduct.stockQuantity ?? 0} units</strong></p>
+            <div>
+              <p className="font-bold text-sm">{selectedStockProduct.name}</p>
+              <p className="text-xs text-muted-foreground">Current in stock: {selectedStockProduct.stockQuantity ?? 0} units</p>
             </div>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1">New Stock Quantity Arrived</label>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Quantity to Add</label>
               <input
                 type="number"
                 value={stockAddAmount}
                 onChange={e => setStockAddAmount(e.target.value)}
-                placeholder="Enter quantity..."
-                className="w-full h-12 text-center text-xl font-bold rounded-xl border bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full h-12 text-center text-xl font-bold rounded-xl border bg-muted/40 focus:outline-none"
+                autoFocus
               />
             </div>
             <button

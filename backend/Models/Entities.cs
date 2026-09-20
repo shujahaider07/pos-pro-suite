@@ -40,6 +40,8 @@ public class OrderEntity
     public string Status { get; set; } = "Active";
     public decimal TotalAmount { get; set; }
     public string PaymentMethod { get; set; } = "Cash";
+    public string? CashierName { get; set; } = "Staff";
+    public string? CashierEmail { get; set; } = string.Empty;
     public ICollection<OrderItemEntity> Items { get; set; } = new List<OrderItemEntity>();
 }
 

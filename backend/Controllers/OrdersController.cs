@@ -6,10 +6,14 @@ using PosProSuite.Api.Models;
 namespace PosProSuite.Api.Controllers;
 
 public record OrderItemRequest(int ProductId, int Quantity, string? CustomName = null, decimal? CustomPrice = null);
-public record CreateOrderRequest(IReadOnlyCollection<OrderItemRequest> Items, string? PaymentMethod = "Cash");
+public record CreateOrderRequest(
+    IReadOnlyCollection<OrderItemRequest> Items,
+    string? PaymentMethod = "Cash",
+    string? CashierName = null,
+    string? CashierEmail = null);
 
 public record ReturnItemRequest(int ProductId, int ReturnQuantity);
-public record ReturnOrderRequest(IReadOnlyCollection<ReturnItemRequest> ReturnedItems);
+public record ReturnOrderRequest(IReadOnlyCollection<ReturnItemRequest> ReturnedItems, string? CashierName = null);
 
 [ApiController]
 [Route("api/[controller]")]
@@ -23,11 +27,33 @@ public class OrdersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult> GetOrders()
+    public async Task<ActionResult> GetOrders([FromQuery] string? cashier = null, [FromQuery] string? role = null)
     {
-        var orders = await _context.Orders
+        var query = _context.Orders
             .Include(o => o.Items)
             .ThenInclude(i => i.Product)
+            .AsQueryable();
+
+        // If not admin, or if specific cashier filter is requested
+        if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(cashier))
+            {
+                var normalizedCashier = cashier.Trim().ToLower();
+                query = query.Where(o =>
+                    (o.CashierName != null && o.CashierName.ToLower() == normalizedCashier) ||
+                    (o.CashierEmail != null && o.CashierEmail.ToLower() == normalizedCashier));
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(cashier) && cashier.ToLower() != "all")
+        {
+            var normalizedCashier = cashier.Trim().ToLower();
+            query = query.Where(o =>
+                (o.CashierName != null && o.CashierName.ToLower() == normalizedCashier) ||
+                (o.CashierEmail != null && o.CashierEmail.ToLower() == normalizedCashier));
+        }
+
+        var orders = await query
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
 
@@ -38,6 +64,8 @@ public class OrdersController : ControllerBase
             status = o.Status,
             total = o.TotalAmount,
             paymentMethod = o.PaymentMethod,
+            cashierName = !string.IsNullOrWhiteSpace(o.CashierName) ? o.CashierName : "Staff",
+            cashierEmail = o.CashierEmail ?? "",
             createdAt = o.CreatedAt,
             completedAt = o.CompletedAt,
             items = o.Items.Select(i => new
@@ -72,6 +100,8 @@ public class OrdersController : ControllerBase
             CreatedAt = DateTime.Now,
             Status = "Active",
             PaymentMethod = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "Cash" : request.PaymentMethod,
+            CashierName = !string.IsNullOrWhiteSpace(request.CashierName) ? request.CashierName.Trim() : "Staff",
+            CashierEmail = request.CashierEmail?.Trim() ?? string.Empty,
             OrderNumber = $"TK-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}"
         };
 
@@ -88,14 +118,14 @@ public class OrdersController : ControllerBase
             }
             else
             {
-                // Custom Open Item sale — auto-create product entry for reporting
+                // Custom Open Item sale
                 var customProd = new ProductEntity
                 {
                     Name = !string.IsNullOrWhiteSpace(item.CustomName) ? item.CustomName : "Custom Open Item",
                     Price = item.CustomPrice ?? 50,
                     CategoryId = "all",
                     Subcategory = "Custom",
-                    Image = "🏷️",
+                    Image = "📦",
                     Available = true,
                     StockQuantity = 999
                 };
@@ -116,7 +146,7 @@ public class OrdersController : ControllerBase
         _context.Orders.Add(order);
         await _context.SaveChangesAsync();
 
-        return Ok(new { order.Id, order.OrderNumber, order.TotalAmount, order.PaymentMethod });
+        return Ok(new { order.Id, order.OrderNumber, order.TotalAmount, order.PaymentMethod, order.CashierName });
     }
 
     [HttpPost("{id:int}/complete")]
@@ -202,7 +232,7 @@ public class OrdersController : ControllerBase
                 {
                     ProductId = retItem.ProductId,
                     QuantityChange = qtyToReturn,
-                    Reason = $"Return (Order #{order.OrderNumber})",
+                    Reason = $"Return (Order #{order.OrderNumber}) by {request.CashierName ?? "Staff"}",
                     CreatedAt = DateTime.UtcNow
                 });
             }
@@ -230,7 +260,8 @@ public class OrdersController : ControllerBase
             order.OrderNumber,
             refundAmount = totalRefundAmount,
             newOrderTotal = order.TotalAmount,
-            order.Status
+            order.Status,
+            order.CashierName
         });
     }
 

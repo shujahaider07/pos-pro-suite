@@ -9,6 +9,7 @@ interface TuckShopReceiptProps {
   paymentMethod: 'Cash' | 'Digital';
   cashReceived?: number;
   taxRate?: number;
+  cashierName?: string;
   onClose: () => void;
 }
 
@@ -18,6 +19,7 @@ const TuckShopReceipt = ({
   paymentMethod,
   cashReceived,
   taxRate = getStoredTaxRate(),
+  cashierName = 'Staff',
   onClose,
 }: TuckShopReceiptProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -93,10 +95,11 @@ const TuckShopReceipt = ({
           <div ref={receiptRef} className="font-mono text-xs">
             {/* Shop Header */}
             <div className="center bold" style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: 4 }}>
-              <h2 style={{ fontSize: 14, margin: 0 }}>🛒 TUCK SHOP POS</h2>
+              <h2 style={{ fontSize: 14, margin: 0 }}>🏪 TUCK SHOP POS</h2>
               <p style={{ fontSize: 10, color: '#666' }}>Quick &amp; Easy Counter Sales</p>
               <p style={{ fontSize: 10 }}>{dateStr} {timeStr}</p>
               <p style={{ fontSize: 10 }}>Order: <strong>{orderNumber}</strong></p>
+              <p style={{ fontSize: 10 }}>Cashier: <strong>{cashierName}</strong></p>
             </div>
 
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />

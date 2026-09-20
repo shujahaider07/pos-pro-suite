@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus, RotateCcw, X } from 'lucide-react';
+import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus, RotateCcw, X, User } from 'lucide-react';
 import { initialProducts, initialCategories, getStoredTaxRate, type CartItem, type Product, type Category } from '@/lib/mock-data';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/lib/pos-context';
 import ProductCard from '@/components/pos/ProductCard';
 import PaymentModal from '@/components/pos/PaymentModal';
 import TuckShopReceipt from '@/components/pos/TuckShopReceipt';
@@ -13,6 +14,7 @@ import { toast } from 'sonner';
 const OrderScreen = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { userName, role, email } = useAuth();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5001';
@@ -71,12 +73,19 @@ const OrderScreen = () => {
     focusSearchInput();
   };
 
-  // Fetch recent orders for return lookup
+  // Fetch recent orders for return lookup (filtered by current cashier if employee)
   const { data: recentOrders = [] } = useQuery({
-    queryKey: ['orders'],
+    queryKey: ['orders', userName, role],
     queryFn: async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/orders`);
+        const params = new URLSearchParams();
+        if (role !== 'admin' && userName) {
+          params.append('cashier', userName);
+        }
+        if (role) {
+          params.append('role', role);
+        }
+        const res = await fetch(`${API_BASE_URL}/api/orders${params.toString() ? '?' + params.toString() : ''}`);
         if (!res.ok) return [];
         return res.json();
       } catch {
@@ -99,18 +108,15 @@ const OrderScreen = () => {
     focusSearchInput();
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // If a modal is open, don't interfere
       if (showPayment || showReceipt || showRecentSalesModal || showCustomItemModal || selectedReturnOrder) {
         return;
       }
 
-      // If user is already typing in an input/textarea, let it be
       const activeEl = document.activeElement;
       if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
         return;
       }
 
-      // If printable key or barcode character pressed, focus search bar immediately
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
         searchInputRef.current?.focus();
       }
@@ -189,7 +195,6 @@ const OrderScreen = () => {
     setCartItems(prev => {
       const existing = prev.find(i => i.product.id === product.id);
       if (existing) {
-        // Stock check
         if (product.stockQuantity !== undefined && existing.quantity >= product.stockQuantity) {
           toast.error(`Cannot add more. Only ${product.stockQuantity} in stock.`);
           return prev;
@@ -203,7 +208,7 @@ const OrderScreen = () => {
     focusSearchInput();
   };
 
-  // Barcode Scanner Listener - auto adds to cart when exact barcode is scanned or Enter is pressed
+  // Barcode Scanner Listener
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -212,7 +217,7 @@ const OrderScreen = () => {
 
       const q = rawQuery.toLowerCase();
 
-      // 1. Search exact barcode match across all available products
+      // 1. Search exact barcode match
       const matchedBarcode = productsFromApi.find(
         p => p.barcode && p.barcode.trim().toLowerCase() === q
       );
@@ -222,7 +227,6 @@ const OrderScreen = () => {
         p => p.name.trim().toLowerCase() === q
       ) : null;
 
-      // 3. Fallback to single displayed product
       const matched = matchedBarcode || matchedName || (displayProducts.length === 1 ? displayProducts[0] : null);
 
       if (matched) {
@@ -281,6 +285,8 @@ const OrderScreen = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paymentMethod: method,
+          cashierName: userName || 'Staff',
+          cashierEmail: email || '',
           items: cartItems.map(item => ({
             productId: item.product.id > 0 ? item.product.id : 0,
             quantity: item.quantity,
@@ -354,8 +360,14 @@ const OrderScreen = () => {
             </div>
           </div>
 
+          {/* Active Cashier Badge */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-xs font-bold text-primary">
+            <User className="w-3.5 h-3.5" />
+            <span>Cashier: {userName || 'Staff'}</span>
+          </div>
+
           {/* Barcode / Search Box */}
-          <div className="flex-1 relative ml-4">
+          <div className="flex-1 relative ml-2">
             <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-pulse" />
             <input
               ref={searchInputRef}
@@ -382,7 +394,7 @@ const OrderScreen = () => {
             <button
               onClick={() => setShowRecentSalesModal(true)}
               className="h-10 px-3 rounded-xl border border-orange-500/30 bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 text-xs font-bold transition-all flex items-center gap-1.5"
-              title="Lookup order for return"
+              title="Lookup your sales for return"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Sales Return</span>
@@ -600,6 +612,7 @@ const OrderScreen = () => {
           paymentMethod={lastPaymentMethod}
           cashReceived={lastCashReceived}
           taxRate={taxRate}
+          cashierName={userName || 'Staff'}
           onClose={() => {
             setShowReceipt(false);
             handleClearOrder();
@@ -612,9 +625,14 @@ const OrderScreen = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
           <div className="bg-card rounded-2xl p-6 w-full max-w-md border shadow-float space-y-4">
             <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-bold text-lg flex items-center gap-2">
-                <RotateCcw className="w-5 h-5 text-orange-500" /> Select Order to Return
-              </h3>
+              <div>
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-orange-500" /> Select Order to Return
+                </h3>
+                <p className="text-[11px] text-muted-foreground">
+                  Showing sales for cashier: <strong className="text-foreground">{userName || 'Staff'}</strong>
+                </p>
+              </div>
               <button onClick={() => { setShowRecentSalesModal(false); focusSearchInput(); }} className="p-1 rounded-lg hover:bg-muted">
                 <X className="w-4 h-4" />
               </button>
@@ -636,7 +654,7 @@ const OrderScreen = () => {
             <div className="max-h-72 overflow-y-auto pos-scrollbar space-y-2">
               {filteredReturnOrders.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-8">
-                  No matching order found for "${returnOrderSearch}"
+                  {returnOrderSearch.trim() ? `No matching order found for "${returnOrderSearch}"` : 'No previous sales found for this cashier.'}
                 </p>
               ) : (
                 filteredReturnOrders.map((ord: any) => (
@@ -657,7 +675,7 @@ const OrderScreen = () => {
                     <div>
                       <p className="font-bold text-base">{ord.orderNumber}</p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(ord.createdAt).toLocaleTimeString()} • {ord.paymentMethod}
+                        {new Date(ord.createdAt).toLocaleTimeString()} • {ord.paymentMethod} • <span className="font-medium text-primary">{ord.cashierName || 'Staff'}</span>
                       </p>
                     </div>
                     <div className="text-right">
