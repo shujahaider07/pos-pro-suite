@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus, RotateCcw, X } from 'lucide-react';
 import { initialProducts, initialCategories, getStoredTaxRate, type CartItem, type Product, type Category } from '@/lib/mock-data';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import ProductCard from '@/components/pos/ProductCard';
 import PaymentModal from '@/components/pos/PaymentModal';
 import TuckShopReceipt from '@/components/pos/TuckShopReceipt';
@@ -26,9 +26,11 @@ const OrderScreen = () => {
   const [receiptItems, setReceiptItems] = useState<CartItem[]>([]);
   const [showRecentSalesModal, setShowRecentSalesModal] = useState(false);
   const [selectedReturnOrder, setSelectedReturnOrder] = useState<any | null>(null);
+  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [lastOrderNumber, setLastOrderNumber] = useState('');
   const [lastPaymentMethod, setLastPaymentMethod] = useState<'Cash' | 'Digital'>('Cash');
   const [lastCashReceived, setLastCashReceived] = useState<number | undefined>(undefined);
+
   // Custom Item Modal State
   const [showCustomItemModal, setShowCustomItemModal] = useState(false);
   const [customItemName, setCustomItemName] = useState('');
@@ -36,6 +38,13 @@ const OrderScreen = () => {
 
   // Order Return Search State
   const [returnOrderSearch, setReturnOrderSearch] = useState('');
+
+  // Auto-focus helper to ensure barcode scanner is always ready
+  const focusSearchInput = () => {
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 50);
+  };
 
   const handleAddCustomItem = () => {
     const price = Number(customItemPrice);
@@ -49,7 +58,7 @@ const OrderScreen = () => {
       name: customItemName.trim(),
       price: price,
       category: 'all',
-      image: '🏷️',
+      image: '📦',
       available: true,
       stockQuantity: 999,
     };
@@ -59,6 +68,7 @@ const OrderScreen = () => {
     setCustomItemName('');
     setCustomItemPrice('');
     toast.success(`Added open item: ${customProduct.name} (Rs ${price})`);
+    focusSearchInput();
   };
 
   // Fetch recent orders for return lookup
@@ -84,10 +94,31 @@ const OrderScreen = () => {
     );
   }, [recentOrders, returnOrderSearch]);
 
-  // Focus search input on mount so barcode scanner works immediately
+  // Global listener: Always keep barcode search focused when no modal is open
   useEffect(() => {
-    searchInputRef.current?.focus();
-  }, []);
+    focusSearchInput();
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // If a modal is open, don't interfere
+      if (showPayment || showReceipt || showRecentSalesModal || showCustomItemModal || selectedReturnOrder) {
+        return;
+      }
+
+      // If user is already typing in an input/textarea, let it be
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+        return;
+      }
+
+      // If printable key or barcode character pressed, focus search bar immediately
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        searchInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [showPayment, showReceipt, showRecentSalesModal, showCustomItemModal, selectedReturnOrder]);
 
   // Fetch Categories
   const { data: categories = initialCategories } = useQuery<Category[]>({
@@ -115,7 +146,7 @@ const OrderScreen = () => {
         if (activeSubcategory) params.append('subcategory', activeSubcategory);
         if (search) params.append('search', search);
 
-        const response = await fetch(`${API_BASE_URL}/api/products${params.toString() ? `?${params.toString()}` : ''}`);
+        const response = await fetch(`${API_BASE_URL}/api/products${params.toString() ? '?' + params.toString() : ''}`);
         if (!response.ok) return initialProducts;
         const data = await response.json();
         return Array.isArray(data) && data.length > 0 ? data : initialProducts;
@@ -151,6 +182,7 @@ const OrderScreen = () => {
   const addToCart = (product: Product) => {
     if (!product.available || (product.stockQuantity !== undefined && product.stockQuantity <= 0)) {
       toast.error(`${product.name} is out of stock!`);
+      focusSearchInput();
       return;
     }
 
@@ -168,23 +200,39 @@ const OrderScreen = () => {
     });
 
     toast.success(`${product.name} added to cart`);
+    focusSearchInput();
   };
 
-  // Barcode Scanner Listener — auto adds to cart when exact barcode is scanned or Enter is pressed
+  // Barcode Scanner Listener - auto adds to cart when exact barcode is scanned or Enter is pressed
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && search.trim()) {
-      const query = search.trim();
-      // Try exact barcode match first
-      const matched = productsFromApi.find(
-        p => p.barcode === query || p.name.toLowerCase() === query.toLowerCase()
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const rawQuery = search.trim();
+      if (!rawQuery) return;
+
+      const q = rawQuery.toLowerCase();
+
+      // 1. Search exact barcode match across all available products
+      const matchedBarcode = productsFromApi.find(
+        p => p.barcode && p.barcode.trim().toLowerCase() === q
       );
+
+      // 2. Search exact name match
+      const matchedName = !matchedBarcode ? productsFromApi.find(
+        p => p.name.trim().toLowerCase() === q
+      ) : null;
+
+      // 3. Fallback to single displayed product
+      const matched = matchedBarcode || matchedName || (displayProducts.length === 1 ? displayProducts[0] : null);
+
       if (matched) {
         addToCart(matched);
         setSearch('');
-      } else if (displayProducts.length === 1) {
-        addToCart(displayProducts[0]);
+      } else {
+        toast.error(`No item found with barcode/name "${rawQuery}"`);
         setSearch('');
       }
+      focusSearchInput();
     }
   };
 
@@ -202,71 +250,70 @@ const OrderScreen = () => {
         })
         .filter(Boolean) as CartItem[]
     );
+    focusSearchInput();
   };
 
   const removeItem = (productId: number) => {
     setCartItems(prev => prev.filter(i => i.product.id !== productId));
     toast.info('Item removed');
+    focusSearchInput();
   };
-
-  const createOrderMutation = useMutation({
-    mutationFn: async (paymentMethod: string) => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/orders`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            paymentMethod,
-            items: cartItems.map(item => ({
-              productId: item.product.id > 0 ? item.product.id : 0,
-              quantity: item.quantity,
-              customName: item.product.id < 0 ? item.product.name : null,
-              customPrice: item.product.id < 0 ? item.product.price : null,
-            })),
-          }),
-        });
-        if (response.ok) {
-          return response.json() as Promise<{ id: number; orderNumber: string }>;
-        }
-      } catch {}
-      return { id: Math.floor(Math.random() * 9000) + 1000, orderNumber: `TK-${Date.now().toString().slice(-4)}` };
-    },
-    onSuccess: data => {
-      setCurrentOrderId(data.id);
-      setLastOrderNumber(data.orderNumber);
-    },
-  });
-
-  const completeOrderMutation = useMutation({
-    mutationFn: async (orderId: number) => {
-      try {
-        await fetch(`${API_BASE_URL}/api/orders/${orderId}/complete`, { method: 'POST' });
-      } catch {}
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['stock'] });
-    },
-  });
 
   const handleProceedPayment = () => {
     if (cartItems.length === 0) {
       toast.error('Cart is empty');
+      focusSearchInput();
       return;
     }
-    createOrderMutation.mutate('Cash');
     setShowPayment(true);
   };
 
-  const handlePaymentSuccess = (method: 'Cash' | 'Digital', cashReceived?: number) => {
+  const handlePaymentSuccess = async (method: 'Cash' | 'Digital', cashReceived?: number) => {
     setLastPaymentMethod(method);
     setLastCashReceived(cashReceived);
     setReceiptItems([...cartItems]);
 
-    if (currentOrderId) {
-      completeOrderMutation.mutate(currentOrderId);
+    let generatedOrderNumber = `TK-${Date.now().toString().slice(-4)}`;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentMethod: method,
+          items: cartItems.map(item => ({
+            productId: item.product.id > 0 ? item.product.id : 0,
+            quantity: item.quantity,
+            customName: item.product.id < 0 ? item.product.name : null,
+            customPrice: item.product.id < 0 ? item.product.price : null,
+          })),
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.orderNumber) {
+          generatedOrderNumber = data.orderNumber;
+        }
+        if (data.id) {
+          setCurrentOrderId(data.id);
+          try {
+            await fetch(`${API_BASE_URL}/api/orders/${data.id}/complete`, { method: 'POST' });
+          } catch (err) {
+            console.error('Failed to complete order:', err);
+          }
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    } catch (err) {
+      console.error('Order creation error:', err);
     }
 
+    setLastOrderNumber(generatedOrderNumber);
     setShowPayment(false);
     setShowReceipt(true);
     toast.success('Sale completed successfully! 🎉');
@@ -274,8 +321,9 @@ const OrderScreen = () => {
 
   const handleClearOrder = () => {
     setCartItems([]);
+    setReceiptItems([]);
     setCurrentOrderId(null);
-    searchInputRef.current?.focus();
+    focusSearchInput();
   };
 
   const taxRate = getStoredTaxRate();
@@ -298,7 +346,7 @@ const OrderScreen = () => {
           </button>
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-soft">
-              🛒
+              🏪
             </div>
             <div>
               <span className="font-bold text-base leading-none block">TuckShop POS</span>
@@ -312,160 +360,189 @@ const OrderScreen = () => {
             <input
               ref={searchInputRef}
               type="text"
+              autoFocus
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              placeholder="Scan Barcode or type item name... (Press Enter to add)"
-              className="w-full h-11 pl-10 pr-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+              placeholder="Scan barcode or type item name & press Enter..."
+              className="w-full h-10 pl-10 pr-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-mono"
             />
           </div>
 
-          {/* Custom Open Item Sale Button */}
-          <button
-            onClick={() => setShowCustomItemModal(true)}
-            className="px-3.5 h-11 rounded-xl gradient-primary text-primary-foreground text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shadow-soft hover:opacity-95"
-            title="Sell item without barcode / unlisted item"
-          >
-            <Plus className="w-4 h-4" /> Custom Item
-          </button>
-
-          {/* Quick Returns Button */}
-          <button
-            onClick={() => setShowRecentSalesModal(true)}
-            className="px-3.5 h-11 rounded-xl border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shadow-soft"
-            title="Sales Return & Refunds"
-          >
-            <RotateCcw className="w-4 h-4" /> Returns
-          </button>
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCustomItemModal(true)}
+              className="h-10 px-3 rounded-xl border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold transition-all flex items-center gap-1.5"
+              title="Add Custom Unlisted Item"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Custom Item</span>
+            </button>
+            <button
+              onClick={() => setShowRecentSalesModal(true)}
+              className="h-10 px-3 rounded-xl border border-orange-500/30 bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 text-xs font-bold transition-all flex items-center gap-1.5"
+              title="Lookup order for return"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Sales Return</span>
+            </button>
+          </div>
         </div>
 
         {/* Categories Bar */}
-        <div className="px-6 py-3 border-b bg-card">
-          <div className="flex gap-2 overflow-x-auto pos-scrollbar pb-1">
-            {categories.map(cat => (
+        <div className="px-6 py-3 border-b flex gap-2 overflow-x-auto pos-scrollbar bg-card/40">
+          <button
+            onClick={() => {
+              setActiveCategory('all');
+              setActiveSubcategory(null);
+              focusSearchInput();
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              activeCategory === 'all'
+                ? 'gradient-primary text-primary-foreground shadow-soft'
+                : 'bg-muted hover:bg-accent text-muted-foreground'
+            }`}
+          >
+            All Items
+          </button>
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => {
+                setActiveCategory(cat.id);
+                setActiveSubcategory(null);
+                focusSearchInput();
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                activeCategory === cat.id
+                  ? 'gradient-primary text-primary-foreground shadow-soft'
+                  : 'bg-muted hover:bg-accent text-muted-foreground'
+              }`}
+            >
+              <span>{cat.icon}</span>
+              <span>{cat.name}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Subcategories (if available) */}
+        {currentCategory?.subcategories && currentCategory.subcategories.length > 0 && (
+          <div className="px-6 py-2 border-b flex gap-2 overflow-x-auto pos-scrollbar bg-muted/20">
+            <button
+              onClick={() => {
+                setActiveSubcategory(null);
+                focusSearchInput();
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap ${
+                activeSubcategory === null ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              All
+            </button>
+            {currentCategory.subcategories.map(sub => (
               <button
-                key={cat.id}
+                key={sub}
                 onClick={() => {
-                  setActiveCategory(cat.id);
-                  setActiveSubcategory(null);
+                  setActiveSubcategory(sub);
+                  focusSearchInput();
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-200 ${
-                  activeCategory === cat.id
-                    ? 'gradient-primary text-primary-foreground shadow-soft'
-                    : 'bg-muted/60 border hover:border-primary/30 text-muted-foreground hover:text-foreground'
+                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap ${
+                  activeSubcategory === sub ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <span>{cat.icon}</span>
-                {cat.name}
+                {sub}
               </button>
             ))}
           </div>
-
-          {/* Subcategories */}
-          {currentCategory?.subcategories && currentCategory.subcategories.length > 0 && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="flex gap-2 mt-2 pt-2 border-t overflow-x-auto pos-scrollbar">
-              <button
-                onClick={() => setActiveSubcategory(null)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                  !activeSubcategory ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                All
-              </button>
-              {currentCategory.subcategories.map(sub => (
-                <button
-                  key={sub}
-                  onClick={() => setActiveSubcategory(sub)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                    activeSubcategory === sub ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {sub}
-                </button>
-              ))}
-            </motion.div>
-          )}
-        </div>
+        )}
 
         {/* Product Grid */}
-        <div className="flex-1 overflow-y-auto pos-scrollbar p-6">
+        <div className="flex-1 p-6 overflow-y-auto pos-scrollbar">
           {displayProducts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-              <Search className="w-10 h-10 mb-3 opacity-20" />
-              <p className="text-sm font-semibold">No items found</p>
-              <p className="text-xs mt-1">Try scanning barcode or typing name</p>
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+              <ShoppingBag className="w-12 h-12 mb-2 opacity-30" />
+              <p className="font-semibold text-sm">No products found</p>
+              <p className="text-xs mt-1">Try another search or add a custom item</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {displayProducts.map(product => (
-                <ProductCard key={product.id} product={product} onAdd={addToCart} />
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAdd={() => addToCart(product)}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Right Column: Cart Panel */}
-      <div className="w-[35%] min-w-[340px] flex flex-col bg-card border-l">
+      {/* Right Column: Cart & Checkout */}
+      <div className="flex flex-col bg-card border-l h-screen" style={{ width: '35%' }}>
+        {/* Cart Header */}
         <div className="p-5 border-b flex items-center justify-between">
-          <div>
-            <h2 className="font-bold text-lg flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-primary" /> Current Cart
-            </h2>
-            <p className="text-xs text-muted-foreground">{cartItems.reduce((s, i) => s + i.quantity, 0)} items</p>
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-lg">Current Sale</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">
+              {cartItems.reduce((s, i) => s + i.quantity, 0)}
+            </span>
           </div>
           {cartItems.length > 0 && (
             <button
               onClick={handleClearOrder}
-              className="text-xs text-destructive hover:bg-destructive/10 px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 font-medium"
+              className="text-xs font-bold text-destructive hover:underline"
             >
-              <Trash2 className="w-3.5 h-3.5" /> Clear Cart
+              Clear All
             </button>
           )}
         </div>
 
         {/* Cart Items List */}
-        <div className="flex-1 overflow-y-auto pos-scrollbar p-4 space-y-2">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2.5 pos-scrollbar">
           {cartItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground py-16">
-              <ShoppingBag className="w-12 h-12 mb-3 opacity-20" />
-              <p className="text-sm font-medium">Cart is empty</p>
-              <p className="text-xs mt-1 text-center max-w-[200px]">Scan a barcode or click items on the left to add</p>
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-center p-6">
+              <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-3">
+                <ShoppingBag className="w-8 h-8 opacity-40" />
+              </div>
+              <p className="font-bold text-sm">Cart is empty</p>
+              <p className="text-xs text-muted-foreground mt-1">Scan a barcode or click items to add them to current sale</p>
             </div>
           ) : (
             cartItems.map(item => (
               <motion.div
                 key={item.product.id}
                 layout
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20, height: 0 }}
-                className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 group"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3 rounded-xl border bg-card/60 flex items-center justify-between gap-3 shadow-sm"
               >
-                <span className="text-2xl">{item.product.image}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{item.product.name}</p>
-                  <p className="text-xs text-muted-foreground">Rs {item.product.price} each</p>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-xs truncate">{item.product.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Rs {item.product.price} each • <strong className="text-foreground">Rs {item.product.price * item.quantity}</strong>
+                  </p>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 bg-muted rounded-lg p-1">
                   <button
                     onClick={() => updateQuantity(item.product.id, -1)}
-                    className="w-7 h-7 rounded-lg border flex items-center justify-center hover:bg-muted transition-colors"
+                    className="w-6 h-6 rounded flex items-center justify-center hover:bg-card text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <Minus className="w-3 h-3" />
                   </button>
-                  <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
+                  <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
                   <button
                     onClick={() => updateQuantity(item.product.id, 1)}
-                    className="w-7 h-7 rounded-lg border flex items-center justify-center hover:bg-muted transition-colors"
+                    className="w-6 h-6 rounded flex items-center justify-center hover:bg-card text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <Plus className="w-3 h-3" />
                   </button>
                 </div>
-                <span className="text-sm font-bold w-16 text-right">Rs {item.product.price * item.quantity}</span>
                 <button
                   onClick={() => removeItem(item.product.id)}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
+                  className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -507,7 +584,10 @@ const OrderScreen = () => {
       {showPayment && (
         <PaymentModal
           total={grandTotal}
-          onClose={() => setShowPayment(false)}
+          onClose={() => {
+            setShowPayment(false);
+            focusSearchInput();
+          }}
           onComplete={handlePaymentSuccess}
         />
       )}
@@ -535,7 +615,7 @@ const OrderScreen = () => {
               <h3 className="font-bold text-lg flex items-center gap-2">
                 <RotateCcw className="w-5 h-5 text-orange-500" /> Select Order to Return
               </h3>
-              <button onClick={() => setShowRecentSalesModal(false)} className="p-1 rounded-lg hover:bg-muted">
+              <button onClick={() => { setShowRecentSalesModal(false); focusSearchInput(); }} className="p-1 rounded-lg hover:bg-muted">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -556,7 +636,7 @@ const OrderScreen = () => {
             <div className="max-h-72 overflow-y-auto pos-scrollbar space-y-2">
               {filteredReturnOrders.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-8">
-                  No matching order found for "{returnOrderSearch}"
+                  No matching order found for "${returnOrderSearch}"
                 </p>
               ) : (
                 filteredReturnOrders.map((ord: any) => (
@@ -600,9 +680,9 @@ const OrderScreen = () => {
           <div className="bg-card rounded-2xl p-6 w-full max-w-sm border shadow-float space-y-4">
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="font-bold text-lg flex items-center gap-2">
-                🏷️ Add Custom / Unlisted Item
+                📦 Add Custom / Unlisted Item
               </h3>
-              <button onClick={() => setShowCustomItemModal(false)} className="p-1 rounded-lg hover:bg-muted">
+              <button onClick={() => { setShowCustomItemModal(false); focusSearchInput(); }} className="p-1 rounded-lg hover:bg-muted">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -643,12 +723,16 @@ const OrderScreen = () => {
       {selectedReturnOrder && (
         <ReturnModal
           order={selectedReturnOrder}
-          onClose={() => setSelectedReturnOrder(null)}
+          onClose={() => {
+            setSelectedReturnOrder(null);
+            focusSearchInput();
+          }}
           onReturnSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['orders'] });
             queryClient.invalidateQueries({ queryKey: ['products'] });
             queryClient.invalidateQueries({ queryKey: ['stock'] });
             queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+            focusSearchInput();
           }}
         />
       )}

@@ -5,7 +5,7 @@ import { X, Banknote, CreditCard, Loader2, CheckCircle2 } from 'lucide-react';
 interface PaymentModalProps {
   total: number;
   onClose: () => void;
-  onComplete: (method: 'Cash' | 'Digital', cashReceived?: number) => void;
+  onComplete: (method: 'Cash' | 'Digital', cashReceived?: number) => Promise<void> | void;
 }
 
 type PaymentMethod = 'Cash' | 'Digital';
@@ -23,9 +23,15 @@ const PaymentModal = ({ total, onClose, onComplete }: PaymentModalProps) => {
   // Quick cash note buttons for Pakistan (PKR / Rs)
   const quickAmounts = [50, 100, 500, 1000, 5000];
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setIsProcessing(true);
-    onComplete(method, method === 'Cash' ? received : undefined);
+    try {
+      await onComplete(method, method === 'Cash' ? (received > 0 ? received : grandTotal) : undefined);
+    } catch (err) {
+      console.error('Payment confirmation error:', err);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const methods = [
