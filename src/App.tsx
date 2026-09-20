@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/pos-context";
 import Login from "./pages/Login";
-import Tables from "./pages/Tables";
 import OrderScreen from "./pages/OrderScreen";
 import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
@@ -15,10 +14,10 @@ const queryClient = new QueryClient();
 const ProtectedRoute = ({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'admin' | 'employee' }) => {
   const { isAuthenticated, role } = useAuth();
   if (!isAuthenticated) return <Navigate to="/" replace />;
-  
+
   const userRole = (role || 'admin').toLowerCase();
   if (requiredRole && requiredRole.toLowerCase() === 'admin' && userRole !== 'admin') {
-    return <Navigate to="/tables" replace />;
+    return <Navigate to="/order" replace />;
   }
   return <>{children}</>;
 };
@@ -32,8 +31,8 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/" element={<Login />} />
-            <Route path="/tables" element={<ProtectedRoute><Tables /></ProtectedRoute>} />
-            <Route path="/order/:tableId" element={<ProtectedRoute><OrderScreen /></ProtectedRoute>} />
+            {/* Main POS counter screen — no table selection needed */}
+            <Route path="/order" element={<ProtectedRoute><OrderScreen /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/*" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />

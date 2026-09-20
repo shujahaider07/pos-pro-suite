@@ -2,21 +2,21 @@ import { useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  LayoutDashboard, BarChart3, Package, FolderTree, Grid3X3,
-  Users, FileText, Settings, LogOut, UtensilsCrossed, ChevronLeft,
-  Store, Shield
+  LayoutDashboard, BarChart3, Package, FolderTree, Boxes,
+  Users, FileText, Settings, LogOut, ChevronLeft, Store, Shield
 } from 'lucide-react';
 import { useAuth } from '@/lib/pos-context';
 
 const navItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/admin' },
-  { label: 'Orders & Sales', icon: BarChart3, path: '/admin/sales' },
-  { label: 'Products', icon: Package, path: '/admin/products' },
-  { label: 'Categories', icon: FolderTree, path: '/admin/categories' },
-  { label: 'Tables', icon: Grid3X3, path: '/admin/tables' },
-  { label: 'Employees', icon: Users, path: '/admin/employees' },
-  { label: 'Reports', icon: FileText, path: '/admin/reports' },
-  { label: 'Settings', icon: Settings, path: '/admin/settings' },
+  { label: 'Dashboard',        icon: LayoutDashboard, path: '/admin' },
+  { label: 'Counter POS',      icon: Store,           path: '/order' },
+  { label: 'Stock & Inventory',icon: Boxes,           path: '/admin/stock' },
+  { label: 'Products',         icon: Package,         path: '/admin/products' },
+  { label: 'Categories',       icon: FolderTree,      path: '/admin/categories' },
+  { label: 'Sales History',    icon: BarChart3,       path: '/admin/sales' },
+  { label: 'Staff Users',      icon: Users,           path: '/admin/employees' },
+  { label: 'Reports',          icon: FileText,        path: '/admin/reports' },
+  { label: 'Settings',         icon: Settings,        path: '/admin/settings' },
 ];
 
 interface AdminSidebarProps {
@@ -38,13 +38,13 @@ const AdminSidebar = ({ children }: AdminSidebarProps) => {
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 h-16 border-b">
-          <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center flex-shrink-0 shadow-soft">
-            <UtensilsCrossed className="w-4 h-4 text-primary-foreground" />
+          <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center flex-shrink-0 shadow-soft font-bold text-lg">
+            🛒
           </div>
           {!collapsed && (
             <div>
-              <span className="font-bold text-base whitespace-nowrap block leading-none">RestoPOS</span>
-              <span className="text-[10px] text-primary font-semibold uppercase tracking-wider">Admin Portal</span>
+              <span className="font-bold text-base whitespace-nowrap block leading-none">TuckShop POS</span>
+              <span className="text-[10px] text-primary font-semibold uppercase tracking-wider">Management Portal</span>
             </div>
           )}
         </div>
@@ -52,12 +52,12 @@ const AdminSidebar = ({ children }: AdminSidebarProps) => {
         {/* Quick POS Mode Button */}
         <div className="p-3">
           <button
-            onClick={() => navigate('/tables')}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl gradient-primary text-primary-foreground text-xs font-semibold shadow-soft hover:opacity-95 transition-opacity"
-            title="Open Live POS Table Screen"
+            onClick={() => navigate('/order')}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl gradient-primary text-primary-foreground text-xs font-bold shadow-soft hover:opacity-95 transition-opacity"
+            title="Open Counter POS Screen"
           >
             <Store className="w-4 h-4 flex-shrink-0" />
-            {!collapsed && <span>Open Live POS</span>}
+            {!collapsed && <span>Open Counter POS</span>}
           </button>
         </div>
 
@@ -86,7 +86,7 @@ const AdminSidebar = ({ children }: AdminSidebarProps) => {
           })}
         </nav>
 
-        {/* User Info & Bottom Controls */}
+        {/* User Info & Controls */}
         <div className="p-3 border-t space-y-1.5">
           {!collapsed && (
             <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-muted/50 mb-1">
@@ -95,7 +95,7 @@ const AdminSidebar = ({ children }: AdminSidebarProps) => {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold truncate">{userName || 'Administrator'}</p>
-                <p className="text-[10px] text-muted-foreground uppercase">Super Admin</p>
+                <p className="text-[10px] text-muted-foreground uppercase">Tuck Shop Admin</p>
               </div>
             </div>
           )}
@@ -126,4 +126,3 @@ const AdminSidebar = ({ children }: AdminSidebarProps) => {
 };
 
 export default AdminSidebar;
-

@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PosProSuite.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d3cb22af3e6c6ff7782a083e6e2ff356ee6b24f0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+26e638148a0d3bac1224a3b843c6aa211047c5c4")]
 [assembly: System.Reflection.AssemblyProductAttribute("PosProSuite.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PosProSuite.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

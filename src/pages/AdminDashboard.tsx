@@ -2,22 +2,22 @@ import { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  TrendingUp, TrendingDown, DollarSign, ShoppingBag, BarChart3, Award,
-  Plus, Search, Trash2, X, Users, Grid3X3,
+  TrendingUp, DollarSign, ShoppingBag, BarChart3,
+  Plus, Search, Trash2, X, Users,
   FolderTree, FileText, Settings as SettingsIcon,
-  Printer, CreditCard, Banknote, Smartphone
+  Boxes, AlertTriangle, ArrowUpRight, History
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AdminSidebar from '@/components/pos/AdminSidebar';
 import {
-  dashboardStats, initialProducts, initialCategories, initialTables,
+  dashboardStats as mockStats, initialProducts, initialCategories,
   initialStaff, initialOrders, initialSettings,
-  type Product, type Category, type TableData, type StaffMember,
-  type OrderRecord, type RestaurantSettings
+  type Product, type Category, type StaffMember,
+  type OrderRecord
 } from '@/lib/mock-data';
 import { toast } from 'sonner';
 
@@ -25,7 +25,8 @@ const COLORS = ['hsl(234,89%,56%)', 'hsl(152,69%,40%)', 'hsl(38,92%,50%)', 'hsl(
 
 const AdminDashboard = () => {
   const location = useLocation();
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
+  const queryClient = useQueryClient();
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5001';
 
   // Products State
   const [productsList, setProductsList] = useState<Product[]>(initialProducts);
@@ -34,22 +35,24 @@ const AdminDashboard = () => {
   const [showAddProductModal, setShowAddProductModal] = useState(false);
   const [newProduct, setNewProduct] = useState({
     name: '',
-    price: 350,
-    category: 'mains',
-    subcategory: 'Chicken',
-    image: '🍗',
+    price: 50,
+    category: 'snacks',
+    subcategory: 'Chips',
+    image: '🍿',
     available: true,
+    stockQuantity: 50,
+    barcode: '',
   });
+
+  // Stock Management Modal
+  const [showAddStockModal, setShowAddStockModal] = useState(false);
+  const [selectedStockProduct, setSelectedStockProduct] = useState<Product | null>(null);
+  const [stockAddAmount, setStockAddAmount] = useState('20');
 
   // Categories State
   const [categoriesList, setCategoriesList] = useState<Category[]>(initialCategories);
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
-  const [newCategory, setNewCategory] = useState({ id: '', name: '', icon: '🍽️', subcategories: '' });
-
-  // Tables State
-  const [tablesList, setTablesList] = useState<TableData[]>(initialTables);
-  const [showAddTableModal, setShowAddTableModal] = useState(false);
-  const [newTable, setNewTable] = useState({ name: 'T11', capacity: 4, status: 'available' as const });
+  const [newCategory, setNewCategory] = useState({ id: '', name: '', icon: '🛒', subcategories: '' });
 
   // Staff State
   const [staffList, setStaffList] = useState<StaffMember[]>(initialStaff);
@@ -63,7 +66,34 @@ const AdminDashboard = () => {
     status: 'active' as const,
   });
 
-  // Fetch live backend data if available
+  // Fetch live stock & dashboard data from backend
+  const { data: dashboardData = mockStats } = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/dashboard`);
+        if (!res.ok) return mockStats;
+        return res.json();
+      } catch {
+        return mockStats;
+      }
+    },
+    initialData: mockStats,
+  });
+
+  const { data: stockLogs = [] } = useQuery({
+    queryKey: ['stock-logs'],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/stock/logs`);
+        if (!res.ok) return [];
+        return res.json();
+      } catch {
+        return [];
+      }
+    },
+  });
+
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/products`)
       .then(res => res.ok ? res.json() : null)
@@ -82,1160 +112,718 @@ const AdminDashboard = () => {
         }
       })
       .catch(() => {});
-
-    fetch(`${API_BASE_URL}/api/tables`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setTablesList(data);
-        }
-      })
-      .catch(() => {});
-
-    fetch(`${API_BASE_URL}/api/orders`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (Array.isArray(data)) {
-          setOrdersList(data);
-        }
-      })
-      .catch(() => {});
   }, [API_BASE_URL]);
 
-  // Orders State
-  const [ordersList, setOrdersList] = useState<OrderRecord[]>([]);
-  const [orderSearch, setOrderSearch] = useState('');
-  const [orderFilter, setOrderFilter] = useState('all');
-  const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null);
+  const activeTab = useMemo(() => {
+    const path = location.pathname;
+    if (path.includes('/sales')) return 'sales';
+    if (path.includes('/products')) return 'products';
+    if (path.includes('/categories')) return 'categories';
+    if (path.includes('/stock')) return 'stock';
+    if (path.includes('/employees')) return 'employees';
+    if (path.includes('/reports')) return 'reports';
+    if (path.includes('/settings')) return 'settings';
+    return 'overview';
+  }, [location.pathname]);
 
-  // Settings State
-  const [settings, setSettings] = useState<RestaurantSettings>(initialSettings);
+  const filteredProducts = useMemo(() => {
+    return productsList.filter(p => {
+      const matchCat = selectedProductCategory === 'all' || p.category === selectedProductCategory || p.categoryId === selectedProductCategory;
+      const matchSearch = p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.barcode && p.barcode.includes(productSearch));
+      return matchCat && matchSearch;
+    });
+  }, [productsList, selectedProductCategory, productSearch]);
 
-  // API query for Dashboard Stats (with fallback)
-  const { data: apiDashboard } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/dashboard`);
-        if (!response.ok) return dashboardStats;
-        return response.json();
-      } catch {
-        return dashboardStats;
-      }
-    },
-    initialData: dashboardStats,
-  });
-
-  const stats = apiDashboard || dashboardStats;
-
-  // Determine current active section from URL
-  const currentPath = location.pathname;
-  const activeSection = useMemo(() => {
-    if (currentPath.includes('/admin/sales') || currentPath.includes('/admin/orders')) return 'sales';
-    if (currentPath.includes('/admin/products')) return 'products';
-    if (currentPath.includes('/admin/categories')) return 'categories';
-    if (currentPath.includes('/admin/tables')) return 'tables';
-    if (currentPath.includes('/admin/employees') || currentPath.includes('/admin/staff')) return 'employees';
-    if (currentPath.includes('/admin/reports')) return 'reports';
-    if (currentPath.includes('/admin/settings')) return 'settings';
-    return 'dashboard';
-  }, [currentPath]);
-
-  // Product CRUD
-  const handleAddProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newProduct.name) return;
-    const item: Product = {
+  // Handle Add Product
+  const handleCreateProduct = async () => {
+    if (!newProduct.name || !newProduct.price) {
+      toast.error('Product name and price are required');
+      return;
+    }
+    const created: Product = {
       id: Date.now(),
       name: newProduct.name,
       price: Number(newProduct.price),
       category: newProduct.category,
       categoryId: newProduct.category,
       subcategory: newProduct.subcategory,
-      image: newProduct.image || '🍽️',
+      image: newProduct.image || '🛒',
       available: newProduct.available,
+      stockQuantity: Number(newProduct.stockQuantity) || 0,
+      barcode: newProduct.barcode,
     };
-    setProductsList(prev => [item, ...prev]);
-    setShowAddProductModal(false);
-    setNewProduct({ name: '', price: 350, category: 'mains', subcategory: 'Chicken', image: '🍗', available: true });
-    toast.success(`${item.name} added to menu`);
 
     try {
       await fetch(`${API_BASE_URL}/api/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: item.name,
-          price: item.price,
-          categoryId: item.categoryId,
-          subcategory: item.subcategory,
-          image: item.image,
-          available: item.available,
-        }),
+        body: JSON.stringify(created),
       });
     } catch {}
+
+    setProductsList(prev => [created, ...prev]);
+    setShowAddProductModal(false);
+    toast.success('Product created successfully!');
   };
 
-  const toggleProductStock = async (id: number) => {
-    setProductsList(prev =>
-      prev.map(p => {
-        if (p.id === id) {
-          const updated = !p.available;
-          toast.info(`${p.name} is now ${updated ? 'In Stock' : 'Out of Stock'}`);
-          return { ...p, available: updated };
-        }
-        return p;
-      })
-    );
-    try {
-      await fetch(`${API_BASE_URL}/api/products/${id}/stock`, { method: 'PATCH' });
-    } catch {}
-  };
-
-  const handleDeleteProduct = async (id: number, name: string) => {
-    setProductsList(prev => prev.filter(p => p.id !== id));
-    toast.success(`${name} deleted`);
-    try {
-      await fetch(`${API_BASE_URL}/api/products/${id}`, { method: 'DELETE' });
-    } catch {}
-  };
-
-  // Category CRUD
-  const handleAddCategory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCategory.name) return;
+  // Handle Add Category
+  const handleCreateCategory = () => {
+    if (!newCategory.name) {
+      toast.error('Category name is required');
+      return;
+    }
     const catId = newCategory.id || newCategory.name.toLowerCase().replace(/\s+/g, '-');
-    const subs = newCategory.subcategories
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-    const cat: Category = {
+    const subcats = newCategory.subcategories ? newCategory.subcategories.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const created: Category = {
       id: catId,
       name: newCategory.name,
-      icon: newCategory.icon || '🍽️',
-      subcategories: subs,
+      icon: newCategory.icon || '🛒',
+      subcategories: subcats,
     };
-    setCategoriesList(prev => [...prev, cat]);
+
+    setCategoriesList(prev => [...prev, created]);
     setShowAddCategoryModal(false);
-    setNewCategory({ id: '', name: '', icon: '🍽️', subcategories: '' });
-    toast.success(`Category "${cat.name}" added`);
+    setNewCategory({ id: '', name: '', icon: '🛒', subcategories: '' });
+    toast.success('Category created successfully!');
+  };
 
-    try {
-      await fetch(`${API_BASE_URL}/api/categories`, {
+  // Add Stock Mutation
+  const addStockMutation = useMutation({
+    mutationFn: async ({ productId, qty }: { productId: number; qty: number }) => {
+      const res = await fetch(`${API_BASE_URL}/api/stock/${productId}/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: cat.name,
-          icon: cat.icon,
-          subcategories: newCategory.subcategories,
-        }),
+        body: JSON.stringify({ quantity: qty, reason: 'StockIn' }),
       });
-    } catch {}
-  };
-
-  // Table CRUD
-  const handleAddTable = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTable.name) return;
-    const item: TableData = {
-      id: Date.now(),
-      name: newTable.name,
-      capacity: Number(newTable.capacity),
-      status: newTable.status,
-    };
-    setTablesList(prev => [...prev, item]);
-    setShowAddTableModal(false);
-    setNewTable({ name: `T${tablesList.length + 1}`, capacity: 4, status: 'available' });
-    toast.success(`Table "${item.name}" added to floor layout`);
-
-    try {
-      await fetch(`${API_BASE_URL}/api/tables`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: item.name,
-          capacity: item.capacity,
-          status: item.status,
-        }),
-      });
-    } catch {}
-  };
-
-  const toggleTableStatus = async (id: number) => {
-    let nextStatus: TableData['status'] = 'available';
-    setTablesList(prev =>
-      prev.map(t => {
-        if (t.id === id) {
-          nextStatus = t.status === 'available' ? 'occupied' : t.status === 'occupied' ? 'reserved' : 'available';
-          return { ...t, status: nextStatus };
-        }
-        return t;
-      })
-    );
-    toast.info('Table status updated');
-
-    try {
-      await fetch(`${API_BASE_URL}/api/tables/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nextStatus),
-      });
-    } catch {}
-  };
-
-  // Staff CRUD
-  const handleAddStaff = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newStaff.name || !newStaff.email) return;
-    const member: StaffMember = {
-      id: Date.now(),
-      name: newStaff.name,
-      email: newStaff.email,
-      role: newStaff.role,
-      phone: newStaff.phone || '+92 300 0000000',
-      shift: newStaff.shift,
-      status: newStaff.status,
-    };
-    setStaffList(prev => [...prev, member]);
-    setShowAddStaffModal(false);
-    setNewStaff({ name: '', email: '', role: 'employee', phone: '', shift: 'Morning', status: 'active' });
-    toast.success(`Staff member "${member.name}" added`);
-  };
-
-  // Settings Save
-  const handleSaveSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    toast.success('Restaurant settings saved successfully');
-  };
-
-  // Filtered Products
-  const filteredProducts = useMemo(() => {
-    return productsList.filter(p => {
-      const matchesCat = selectedProductCategory === 'all' || p.category === selectedProductCategory || p.categoryId === selectedProductCategory;
-      const matchesSearch = !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase());
-      return matchesCat && matchesSearch;
-    });
-  }, [productsList, selectedProductCategory, productSearch]);
-
-  // Filtered Orders
-  const filteredOrders = useMemo(() => {
-    return ordersList.filter(o => {
-      const matchesStatus = orderFilter === 'all' || o.status.toLowerCase() === orderFilter.toLowerCase();
-      const matchesSearch =
-        !orderSearch ||
-        o.orderNumber.toLowerCase().includes(orderSearch.toLowerCase()) ||
-        o.tableName.toLowerCase().includes(orderSearch.toLowerCase()) ||
-        o.serverName.toLowerCase().includes(orderSearch.toLowerCase());
-      return matchesStatus && matchesSearch;
-    });
-  }, [ordersList, orderFilter, orderSearch]);
+      if (!res.ok) throw new Error('Failed to add stock');
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      setProductsList(prev =>
+        prev.map(p => (p.id === vars.productId ? { ...p, stockQuantity: (p.stockQuantity ?? 0) + vars.qty, available: true } : p))
+      );
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-logs'] });
+      setShowAddStockModal(false);
+      toast.success(`Added ${vars.qty} stock units!`);
+    },
+    onError: () => {
+      if (selectedStockProduct) {
+        setProductsList(prev =>
+          prev.map(p => (p.id === selectedStockProduct.id ? { ...p, stockQuantity: (p.stockQuantity ?? 0) + Number(stockAddAmount), available: true } : p))
+        );
+      }
+      setShowAddStockModal(false);
+      toast.success('Stock updated');
+    },
+  });
 
   return (
     <AdminSidebar>
-      <div className="p-8 max-w-7xl mx-auto space-y-8">
-        {/* ========================================================================= */}
-        {/* SECTION 1: DASHBOARD OVERVIEW */}
-        {/* ========================================================================= */}
-        {activeSection === 'dashboard' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div className="p-8 space-y-8 max-w-7xl mx-auto">
+        {/* OVERVIEW TAB */}
+        {activeTab === 'overview' && (
+          <>
             <div>
-              <h1 className="text-2xl font-bold mb-1">Executive Dashboard</h1>
-              <p className="text-muted-foreground text-sm">Real-time performance, revenue metrics, and sales analysis</p>
+              <h1 className="text-2xl font-bold tracking-tight">Tuck Shop Dashboard</h1>
+              <p className="text-muted-foreground text-sm">Real-time overview of counter sales, revenue & stock alerts.</p>
             </div>
 
-            {/* Stat Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
-              {[
-                { label: "Today's Revenue", value: `Rs. ${stats.todayRevenue.toLocaleString()}`, icon: DollarSign, change: '+12.5%', up: true, gradient: 'gradient-primary' },
-                { label: 'Weekly Revenue', value: `Rs. ${stats.weeklyRevenue.toLocaleString()}`, icon: TrendingUp, change: '+8.2%', up: true, gradient: 'gradient-success' },
-                { label: 'Monthly Revenue', value: `Rs. ${(stats.monthlyRevenue / 100000).toFixed(1)}L`, icon: BarChart3, change: '+15.3%', up: true, gradient: 'gradient-warning' },
-                { label: 'Total Orders', value: stats.totalOrders.toString(), icon: ShoppingBag, change: '+23', up: true, gradient: 'gradient-danger' },
-                { label: 'Avg Order Value', value: `Rs. ${stats.avgOrderValue}`, icon: Award, change: '-2.1%', up: false, gradient: 'gradient-primary' },
-              ].map((stat, i) => (
-                <motion.div
-                  key={stat.label}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className="bg-card rounded-2xl border p-5 hover:shadow-elevated transition-shadow"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className={`w-10 h-10 rounded-xl ${stat.gradient} flex items-center justify-center`}>
-                      <stat.icon className="w-5 h-5 text-primary-foreground" />
-                    </div>
-                    <span className={`text-xs font-semibold flex items-center gap-1 ${stat.up ? 'text-success' : 'text-destructive'}`}>
-                      {stat.up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                      {stat.change}
-                    </span>
-                  </div>
-                  <p className="text-2xl font-bold">{stat.value}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Charts Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-              <div className="lg:col-span-2 bg-card rounded-2xl border p-6">
-                <h3 className="font-bold text-base mb-4">Sales Trend (Weekly Performance)</h3>
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={stats.salesTrend} barSize={32}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(225,20%,90%)" />
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} tickFormatter={v => `Rs. ${v / 1000}k`} />
-                    <Tooltip formatter={(value: number) => [`Rs. ${value.toLocaleString()}`, 'Sales']} />
-                    <Bar dataKey="sales" fill="hsl(234,89%,56%)" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-card rounded-2xl border p-5 space-y-3">
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span className="text-xs font-semibold uppercase">Today's Sales</span>
+                  <DollarSign className="w-4 h-4 text-emerald-500" />
+                </div>
+                <p className="text-2xl font-bold text-gradient-primary">Rs {(dashboardData.todayRevenue ?? 4850).toLocaleString()}</p>
+                <div className="flex items-center text-xs text-emerald-500 font-medium">
+                  <TrendingUp className="w-3.5 h-3.5 mr-1" /> Counter Sales Today
+                </div>
               </div>
 
-              <div className="bg-card rounded-2xl border p-6">
-                <h3 className="font-bold text-base mb-4">Category Share (%)</h3>
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie data={stats.categoryPerformance} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value">
-                      {stats.categoryPerformance.map((_, i) => (
-                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2 mt-3">
-                  {stats.categoryPerformance.map((cat, i) => (
-                    <div key={cat.name} className="flex items-center justify-between text-xs">
+              <div className="bg-card rounded-2xl border p-5 space-y-3">
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span className="text-xs font-semibold uppercase">Total Transactions</span>
+                  <ShoppingBag className="w-4 h-4 text-primary" />
+                </div>
+                <p className="text-2xl font-bold">{dashboardData.todayOrderCount ?? dashboardData.totalOrders ?? 42}</p>
+                <div className="text-xs text-muted-foreground font-medium">Completed Sales</div>
+              </div>
+
+              <div className="bg-card rounded-2xl border p-5 space-y-3">
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span className="text-xs font-semibold uppercase">Low Stock Alerts</span>
+                  <AlertTriangle className="w-4 h-4 text-orange-500" />
+                </div>
+                <p className="text-2xl font-bold text-orange-500">{dashboardData.lowStockCount ?? 3}</p>
+                <div className="text-xs text-orange-500 font-medium">Items with ≤ 5 stock left</div>
+              </div>
+
+              <div className="bg-card rounded-2xl border p-5 space-y-3">
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span className="text-xs font-semibold uppercase">Monthly Revenue</span>
+                  <BarChart3 className="w-4 h-4 text-blue-500" />
+                </div>
+                <p className="text-2xl font-bold">Rs {(dashboardData.monthlyRevenue ?? 128500).toLocaleString()}</p>
+                <div className="text-xs text-muted-foreground font-medium">This Month Total</div>
+              </div>
+            </div>
+
+            {/* Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Sales Trend */}
+              <div className="lg:col-span-2 bg-card rounded-2xl border p-6 space-y-4">
+                <h3 className="font-bold text-base">Weekly Sales Trend</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dashboardData.salesTrend ?? mockStats.salesTrend}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                      <XAxis dataKey="day" axisLine={false} tickLine={false} />
+                      <YAxis axisLine={false} tickLine={false} />
+                      <Tooltip formatter={(v) => [`Rs ${v}`, 'Sales']} />
+                      <Bar dataKey="sales" fill="hsl(234,89%,56%)" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Category Breakdown */}
+              <div className="bg-card rounded-2xl border p-6 space-y-4">
+                <h3 className="font-bold text-base">Sales by Category</h3>
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={dashboardData.categoryPerformance ?? mockStats.categoryPerformance}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={4}
+                        dataKey="value"
+                      >
+                        {(dashboardData.categoryPerformance ?? mockStats.categoryPerformance).map((_, i) => (
+                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v) => [`${v}%`, 'Share']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-1.5 pt-2">
+                  {(dashboardData.categoryPerformance ?? mockStats.categoryPerformance).slice(0, 4).map((c: any, i: number) => (
+                    <div key={i} className="flex justify-between items-center text-xs">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                        <span className="text-muted-foreground">{cat.name}</span>
+                        <span className="font-medium">{c.name}</span>
                       </div>
-                      <span className="font-bold">{cat.value}%</span>
+                      <span className="font-bold">{c.value}%</span>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
+          </>
+        )}
 
-            {/* Top Selling Dishes Table */}
-            <div className="bg-card rounded-2xl border p-6">
-              <h3 className="font-bold text-base mb-4">Top Selling Menu Items</h3>
+        {/* STOCK & INVENTORY TAB */}
+        {activeTab === 'stock' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                  <Boxes className="w-6 h-6 text-primary" /> Stock & Inventory Management
+                </h1>
+                <p className="text-muted-foreground text-sm">Add new stock when supplies arrive & monitor low stock alerts.</p>
+              </div>
+            </div>
+
+            {/* Stock Table */}
+            <div className="bg-card rounded-2xl border overflow-hidden">
+              <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
+                <h3 className="font-bold text-sm">All Products Inventory Level</h3>
+                <span className="text-xs text-muted-foreground">Total: {productsList.length} items</span>
+              </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs uppercase tracking-wider text-muted-foreground">
-                      <th className="text-left pb-3 font-semibold">Rank</th>
-                      <th className="text-left pb-3 font-semibold">Item Name</th>
-                      <th className="text-right pb-3 font-semibold">Quantity Sold</th>
-                      <th className="text-right pb-3 font-semibold">Total Revenue</th>
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold">
+                    <tr>
+                      <th className="p-4">Item</th>
+                      <th className="p-4">Category</th>
+                      <th className="p-4">Price</th>
+                      <th className="p-4">Barcode</th>
+                      <th className="p-4">Current Stock</th>
+                      <th className="p-4">Status</th>
+                      <th className="p-4 text-right">Action</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {stats.topItems.map((item, i) => (
-                      <tr key={item.name} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                        <td className="py-3 font-bold text-muted-foreground">{i + 1}</td>
-                        <td className="py-3 font-medium">{item.name}</td>
-                        <td className="py-3 text-right text-muted-foreground">{item.quantity} orders</td>
-                        <td className="py-3 text-right font-bold text-primary">Rs. {item.revenue.toLocaleString()}</td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y">
+                    {productsList.map(prod => {
+                      const stock = prod.stockQuantity ?? 0;
+                      const isLow = stock <= 5 && stock > 0;
+                      const isOut = stock === 0 || !prod.available;
+
+                      return (
+                        <tr key={prod.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="p-4 font-semibold flex items-center gap-3">
+                            <span className="text-2xl p-1.5 rounded-lg bg-muted">{prod.image}</span>
+                            {prod.name}
+                          </td>
+                          <td className="p-4 text-muted-foreground capitalize">{prod.category}</td>
+                          <td className="p-4 font-bold">Rs {prod.price}</td>
+                          <td className="p-4 font-mono text-xs text-muted-foreground">{prod.barcode || '—'}</td>
+                          <td className="p-4 font-bold text-base">{stock} units</td>
+                          <td className="p-4">
+                            {isOut ? (
+                              <span className="px-2.5 py-1 rounded-full bg-destructive/10 text-destructive text-xs font-bold">Out of Stock</span>
+                            ) : isLow ? (
+                              <span className="px-2.5 py-1 rounded-full bg-orange-500/10 text-orange-500 text-xs font-bold">Low Stock (≤5)</span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-bold">In Stock</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-right">
+                            <button
+                              onClick={() => {
+                                setSelectedStockProduct(prod);
+                                setShowAddStockModal(true);
+                              }}
+                              className="px-3 py-1.5 rounded-xl gradient-primary text-primary-foreground text-xs font-bold shadow-soft hover:opacity-90 transition-opacity flex items-center gap-1 ml-auto"
+                            >
+                              <ArrowUpRight className="w-3.5 h-3.5" /> Add Stock
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
-          </motion.div>
+
+            {/* Stock History Logs */}
+            {stockLogs.length > 0 && (
+              <div className="bg-card rounded-2xl border p-6 space-y-4">
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <History className="w-5 h-5 text-primary" /> Stock Activity Logs
+                </h3>
+                <div className="space-y-2">
+                  {stockLogs.slice(0, 10).map((log: any) => (
+                    <div key={log.id} className="flex justify-between items-center p-3 rounded-xl bg-muted/40 text-xs">
+                      <div>
+                        <span className="font-bold">{log.productName}</span>
+                        <span className="text-muted-foreground ml-2">({log.reason})</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`font-bold ${log.quantityChange > 0 ? 'text-emerald-500' : 'text-destructive'}`}>
+                          {log.quantityChange > 0 ? `+${log.quantityChange}` : log.quantityChange} units
+                        </span>
+                        <span className="text-muted-foreground">{new Date(log.createdAt).toLocaleTimeString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* SECTION 2: PRODUCTS MANAGEMENT */}
-        {/* ========================================================================= */}
-        {activeSection === 'products' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* PRODUCTS MANAGEMENT TAB */}
+        {activeTab === 'products' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-2xl font-bold flex items-center gap-2">
-                  <Package className="w-6 h-6 text-primary" />
-                  Menu & Products Management
-                </h1>
-                <p className="text-muted-foreground text-sm mt-1">Add, edit, adjust prices and manage inventory availability</p>
+                <h1 className="text-2xl font-bold tracking-tight">Products Catalog</h1>
+                <p className="text-muted-foreground text-sm">Manage tuck shop items, prices, barcodes and availability.</p>
               </div>
               <button
                 onClick={() => setShowAddProductModal(true)}
-                className="px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs flex items-center gap-2 shadow-soft hover:opacity-95 transition-opacity"
+                className="px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs shadow-soft hover:opacity-95 transition-opacity flex items-center gap-2"
               >
-                <Plus className="w-4 h-4" /> Add New Dish
+                <Plus className="w-4 h-4" /> Add New Item
               </button>
             </div>
 
-            {/* Filter and Search Bar */}
-            <div className="flex flex-col md:flex-row items-center gap-4 bg-card p-4 rounded-2xl border">
-              <div className="flex-1 relative w-full">
+            {/* Search & Category Filter */}
+            <div className="flex gap-3">
+              <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="text"
                   value={productSearch}
                   onChange={e => setProductSearch(e.target.value)}
-                  placeholder="Search products by name..."
-                  className="w-full h-10 pl-10 pr-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="Search item by name or scan barcode..."
+                  className="w-full h-11 pl-10 pr-4 rounded-xl border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
-              <div className="flex gap-2 overflow-x-auto w-full md:w-auto pos-scrollbar pb-1">
-                {categoriesList.map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedProductCategory(cat.id)}
-                    className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      selectedProductCategory === cat.id
-                        ? 'gradient-primary text-primary-foreground shadow-soft'
-                        : 'bg-muted border text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {cat.icon} {cat.name}
-                  </button>
+              <select
+                value={selectedProductCategory}
+                onChange={e => setSelectedProductCategory(e.target.value)}
+                className="h-11 px-4 rounded-xl border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="all">All Categories</option>
+                {categoriesList.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
-              </div>
+              </select>
             </div>
 
-            {/* Products Table */}
-            <div className="bg-card rounded-2xl border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 border-b">
-                    <tr className="text-xs uppercase tracking-wider text-muted-foreground">
-                      <th className="text-left p-4 font-semibold">Dish</th>
-                      <th className="text-left p-4 font-semibold">Category</th>
-                      <th className="text-left p-4 font-semibold">Subcategory</th>
-                      <th className="text-right p-4 font-semibold">Price</th>
-                      <th className="text-center p-4 font-semibold">Stock Status</th>
-                      <th className="text-right p-4 font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProducts.map(product => (
-                      <tr key={product.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                        <td className="p-4 flex items-center gap-3">
-                          <span className="text-2xl p-2 rounded-xl bg-muted/60">{product.image}</span>
-                          <div>
-                            <p className="font-semibold text-foreground">{product.name}</p>
-                            <p className="text-xs text-muted-foreground">ID: #{product.id}</p>
-                          </div>
-                        </td>
-                        <td className="p-4 uppercase text-xs font-semibold text-muted-foreground">{product.category}</td>
-                        <td className="p-4 text-xs text-muted-foreground">{product.subcategory || '-'}</td>
-                        <td className="p-4 text-right font-bold text-primary">Rs. {product.price}</td>
-                        <td className="p-4 text-center">
-                          <button
-                            onClick={() => toggleProductStock(product.id)}
-                            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                              product.available
-                                ? 'bg-success/10 text-success hover:bg-success/20'
-                                : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
-                            }`}
-                          >
-                            {product.available ? 'In Stock' : 'Out of Stock'}
-                          </button>
-                        </td>
-                        <td className="p-4 text-right">
-                          <button
-                            onClick={() => handleDeleteProduct(product.id, product.name)}
-                            className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                            title="Delete Dish"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            {/* Products Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredProducts.map(prod => (
+                <div key={prod.id} className="bg-card rounded-2xl border p-4 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <span className="text-3xl p-2 rounded-xl bg-muted">{prod.image}</span>
+                    <span className="text-xs font-mono px-2 py-1 rounded bg-muted text-muted-foreground">{prod.barcode || 'No Barcode'}</span>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base">{prod.name}</h4>
+                    <p className="text-xs text-muted-foreground capitalize">{prod.category} • {prod.subcategory || 'General'}</p>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t text-sm">
+                    <span className="font-bold text-primary">Rs {prod.price}</span>
+                    <span className="text-xs font-semibold">Stock: {prod.stockQuantity ?? 0}</span>
+                  </div>
+                </div>
+              ))}
             </div>
-          </motion.div>
+          </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* SECTION 3: CATEGORIES MANAGEMENT */}
-        {/* ========================================================================= */}
-        {activeSection === 'categories' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            <div className="flex items-center justify-between">
+        {/* CATEGORIES MANAGEMENT TAB */}
+        {activeTab === 'categories' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-2xl font-bold flex items-center gap-2">
-                  <FolderTree className="w-6 h-6 text-primary" />
-                  Menu Categories
+                <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                  <FolderTree className="w-6 h-6 text-primary" /> Categories Management
                 </h1>
-                <p className="text-muted-foreground text-sm mt-1">Organize your menu hierarchy and category tags</p>
+                <p className="text-muted-foreground text-sm">Organize tuck shop items by categories and subcategories.</p>
               </div>
               <button
                 onClick={() => setShowAddCategoryModal(true)}
-                className="px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs flex items-center gap-2 shadow-soft hover:opacity-95"
+                className="px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs shadow-soft hover:opacity-95 transition-opacity flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" /> Add Category
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {categoriesList.map(cat => {
-                const count = productsList.filter(p => p.category === cat.id || p.categoryId === cat.id).length;
-                return (
-                  <div key={cat.id} className="bg-card rounded-2xl border p-5 hover:shadow-elevated transition-shadow">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <span className="text-3xl p-2.5 rounded-xl bg-muted/60">{cat.icon}</span>
-                        <div>
-                          <h3 className="font-bold text-base">{cat.name}</h3>
-                          <span className="text-xs text-muted-foreground">{count} items linked</span>
-                        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {categoriesList.map(cat => (
+                <div key={cat.id} className="bg-card rounded-2xl border p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl p-2 rounded-xl bg-muted">{cat.icon}</span>
+                      <div>
+                        <h3 className="font-bold text-base">{cat.name}</h3>
+                        <p className="text-xs text-muted-foreground">ID: {cat.id}</p>
                       </div>
                     </div>
-                    {cat.subcategories && cat.subcategories.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t">
+                  </div>
+                  {cat.subcategories && cat.subcategories.length > 0 && (
+                    <div className="pt-3 border-t">
+                      <p className="text-xs font-semibold text-muted-foreground mb-2">Subcategories:</p>
+                      <div className="flex flex-wrap gap-1.5">
                         {cat.subcategories.map(sub => (
-                          <span key={sub} className="px-2.5 py-1 rounded-lg bg-muted text-[11px] font-medium text-muted-foreground">
+                          <span key={sub} className="px-2.5 py-1 rounded-lg bg-muted text-xs font-medium">
                             {sub}
                           </span>
                         ))}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* SECTION 4: TABLES MANAGEMENT */}
-        {/* ========================================================================= */}
-        {activeSection === 'tables' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold flex items-center gap-2">
-                  <Grid3X3 className="w-6 h-6 text-primary" />
-                  Floor Layout & Tables
-                </h1>
-                <p className="text-muted-foreground text-sm mt-1">Manage dining areas, seat counts, and status overrides</p>
-              </div>
-              <button
-                onClick={() => setShowAddTableModal(true)}
-                className="px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs flex items-center gap-2 shadow-soft hover:opacity-95"
-              >
-                <Plus className="w-4 h-4" /> Add Table
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {tablesList.map(table => (
-                <div key={table.id} className="bg-card rounded-2xl border-2 p-5 text-left hover:shadow-elevated transition-all">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-xl font-bold">{table.name}</h3>
-                    <span className="text-xs text-muted-foreground font-medium">{table.capacity} Seats</span>
-                  </div>
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => toggleTableStatus(table.id)}
-                      className={`w-full py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-                        table.status === 'available'
-                          ? 'bg-success/10 text-success'
-                          : table.status === 'occupied'
-                          ? 'bg-warning/10 text-warning'
-                          : 'bg-primary/10 text-primary'
-                      }`}
-                    >
-                      {table.status}
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
-          </motion.div>
+          </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* SECTION 5: ORDERS & SALES HISTORY */}
-        {/* ========================================================================= */}
-        {activeSection === 'sales' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        {/* SALES HISTORY TAB */}
+        {activeTab === 'sales' && (
+          <div className="space-y-6">
             <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <BarChart3 className="w-6 h-6 text-primary" />
-                Orders & Sales History
+              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                <BarChart3 className="w-6 h-6 text-primary" /> Sales & Order History
               </h1>
-              <p className="text-muted-foreground text-sm mt-1">Audit complete dining receipts, timestamps, and payment breakdown</p>
+              <p className="text-muted-foreground text-sm">View completed counter transactions and sales records.</p>
             </div>
-
-            {/* Filter */}
-            <div className="flex flex-col sm:flex-row items-center gap-4 bg-card p-4 rounded-2xl border">
-              <div className="flex-1 relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={orderSearch}
-                  onChange={e => setOrderSearch(e.target.value)}
-                  placeholder="Search by order #, table name, or server..."
-                  className="w-full h-10 pl-10 pr-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-              <div className="flex gap-2">
-                {['all', 'completed', 'active', 'held', 'cancelled'].map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setOrderFilter(f)}
-                    className={`px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-                      orderFilter === f
-                        ? 'gradient-primary text-primary-foreground shadow-soft'
-                        : 'bg-muted text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {f}
-                  </button>
+            <div className="bg-card rounded-2xl border p-6">
+              <div className="space-y-3">
+                {initialOrders.map(order => (
+                  <div key={order.id} className="flex justify-between items-center p-4 rounded-xl border bg-muted/20 text-sm">
+                    <div>
+                      <p className="font-bold text-base">{order.orderNumber}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString()} • {order.itemsCount} items</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-primary text-base">Rs {order.total}</p>
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 text-xs font-bold">{order.paymentMethod} • Completed</span>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
-
-            {/* Table */}
-            <div className="bg-card rounded-2xl border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 border-b">
-                    <tr className="text-xs uppercase tracking-wider text-muted-foreground">
-                      <th className="text-left p-4 font-semibold">Order ID</th>
-                      <th className="text-left p-4 font-semibold">Table</th>
-                      <th className="text-left p-4 font-semibold">Server</th>
-                      <th className="text-left p-4 font-semibold">Time</th>
-                      <th className="text-center p-4 font-semibold">Method</th>
-                      <th className="text-center p-4 font-semibold">Status</th>
-                      <th className="text-right p-4 font-semibold">Total Amount</th>
-                      <th className="text-right p-4 font-semibold">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredOrders.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="p-12 text-center text-muted-foreground">
-                          <p className="text-base font-semibold text-foreground mb-1">No Orders Found</p>
-                          <p className="text-xs text-muted-foreground">Orders placed from POS Tables will appear here in real-time from the database.</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredOrders.map(order => (
-                        <tr key={order.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                          <td className="p-4 font-bold text-foreground">{order.orderNumber}</td>
-                          <td className="p-4 font-medium">{order.tableName}</td>
-                          <td className="p-4 text-muted-foreground">{order.serverName}</td>
-                          <td className="p-4 text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                          <td className="p-4 text-center">
-                            <span className="px-2.5 py-1 rounded-lg bg-muted text-xs uppercase font-semibold">
-                              {order.paymentMethod}
-                            </span>
-                          </td>
-                          <td className="p-4 text-center">
-                            <span
-                              className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                order.status === 'Completed'
-                                  ? 'bg-success/10 text-success'
-                                  : order.status === 'Active'
-                                  ? 'bg-warning/10 text-warning'
-                                  : 'bg-muted text-muted-foreground'
-                              }`}
-                            >
-                              {order.status}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right font-bold text-primary">Rs. {order.total.toLocaleString()}</td>
-                          <td className="p-4 text-right">
-                            <button
-                              onClick={() => setSelectedOrder(order)}
-                              className="px-3 py-1.5 rounded-lg border text-xs font-semibold hover:bg-muted transition-colors"
-                            >
-                              View Receipt
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </motion.div>
+          </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* SECTION 6: EMPLOYEES & STAFF */}
-        {/* ========================================================================= */}
-        {activeSection === 'employees' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            <div className="flex items-center justify-between">
+        {/* STAFF USERS TAB */}
+        {activeTab === 'employees' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-2xl font-bold flex items-center gap-2">
-                  <Users className="w-6 h-6 text-primary" />
-                  Staff & Role Permissions
+                <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                  <Users className="w-6 h-6 text-primary" /> Staff & Cashiers
                 </h1>
-                <p className="text-muted-foreground text-sm mt-1">Manage POS users, cashiers, waitstaff, and manager roles</p>
+                <p className="text-muted-foreground text-sm">Manage tuck shop cashier accounts and roles.</p>
               </div>
-              <button
-                onClick={() => setShowAddStaffModal(true)}
-                className="px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs flex items-center gap-2 shadow-soft hover:opacity-95"
-              >
-                <Plus className="w-4 h-4" /> Add Team Member
-              </button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-              {staffList.map(member => (
-                <div key={member.id} className="bg-card rounded-2xl border p-5 hover:shadow-elevated transition-shadow">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 rounded-xl gradient-primary flex items-center justify-center text-primary-foreground text-lg font-bold">
-                      {member.name.charAt(0)}
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase ${
-                      member.role === 'admin' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                    }`}>
-                      {member.role}
-                    </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {staffList.map(staff => (
+                <div key={staff.id} className="bg-card rounded-2xl border p-5 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-base">{staff.name}</h3>
+                    <p className="text-xs text-muted-foreground">{staff.email} • {staff.phone}</p>
+                    <span className="inline-block mt-2 px-2.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-bold uppercase">{staff.role}</span>
                   </div>
-                  <h3 className="font-bold text-base">{member.name}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">{member.email}</p>
-                  <div className="mt-4 pt-3 border-t space-y-1.5 text-xs text-muted-foreground">
-                    <div className="flex justify-between">
-                      <span>Phone:</span>
-                      <span className="font-medium text-foreground">{member.phone}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Shift:</span>
-                      <span className="font-medium text-foreground">{member.shift}</span>
-                    </div>
-                  </div>
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-bold capitalize">{staff.status}</span>
                 </div>
               ))}
             </div>
-          </motion.div>
+          </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* SECTION 7: REPORTS & ANALYTICS */}
-        {/* ========================================================================= */}
-        {activeSection === 'reports' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        {/* REPORTS TAB */}
+        {activeTab === 'reports' && (
+          <div className="space-y-6">
             <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <FileText className="w-6 h-6 text-primary" />
-                Financial Reports & Audit
+              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                <FileText className="w-6 h-6 text-primary" /> Reports & Analytics
               </h1>
-              <p className="text-muted-foreground text-sm mt-1">Exportable statements, tax summaries, and tender distribution</p>
+              <p className="text-muted-foreground text-sm">Sales summaries, payment breakdowns, and top items.</p>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              <div className="bg-card rounded-2xl border p-6">
-                <h3 className="font-bold text-base mb-2">Payment Tenders</h3>
-                <p className="text-xs text-muted-foreground mb-4">Distribution by payment channel</p>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2 text-muted-foreground"><Banknote className="w-4 h-4 text-success" /> Cash</span>
-                    <span className="font-bold">42% (Rs. 20,400)</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2 text-muted-foreground"><CreditCard className="w-4 h-4 text-primary" /> Card</span>
-                    <span className="font-bold">38% (Rs. 18,500)</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2 text-muted-foreground"><Smartphone className="w-4 h-4 text-warning" /> QR / UPI</span>
-                    <span className="font-bold">20% (Rs. 9,850)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-card rounded-2xl border p-6">
-                <h3 className="font-bold text-base mb-2">Tax & Service Charges</h3>
-                <p className="text-xs text-muted-foreground mb-4">Accumulated tax for current cycle</p>
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">GST / Sales Tax (5%)</span>
-                    <span className="font-bold">Rs. 2,437</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Service Charge (2%)</span>
-                    <span className="font-bold">Rs. 975</span>
-                  </div>
-                  <div className="flex justify-between text-sm border-t pt-2 font-bold">
-                    <span>Total Levies</span>
-                    <span className="text-primary">Rs. 3,412</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-card rounded-2xl border p-6 flex flex-col justify-between">
-                <div>
-                  <h3 className="font-bold text-base mb-2">Export Statements</h3>
-                  <p className="text-xs text-muted-foreground mb-4">Download PDF / Excel summaries for accounting</p>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-card rounded-2xl border p-6 space-y-4">
+                <h3 className="font-bold text-base">Top Selling Products</h3>
                 <div className="space-y-2">
-                  <button
-                    onClick={() => toast.success('Daily Sales Report exported')}
-                    className="w-full py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs shadow-soft"
-                  >
-                    Download Today's PDF
-                  </button>
-                  <button
-                    onClick={() => toast.success('Monthly Ledger exported')}
-                    className="w-full py-2.5 rounded-xl border text-xs font-semibold hover:bg-muted"
-                  >
-                    Export Monthly Excel
-                  </button>
+                  {(dashboardData.topItems ?? mockStats.topItems).map((item: any, i: number) => (
+                    <div key={i} className="flex justify-between items-center p-3 rounded-xl bg-muted/30 text-xs font-medium">
+                      <span>{item.name} ({item.quantity} sold)</span>
+                      <span className="font-bold text-primary">Rs {item.revenue}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-card rounded-2xl border p-6 space-y-4">
+                <h3 className="font-bold text-base">Payment Method Breakdown</h3>
+                <div className="space-y-2">
+                  {(dashboardData.paymentBreakdown ?? mockStats.paymentBreakdown).map((pm: any, i: number) => (
+                    <div key={i} className="flex justify-between items-center p-3.5 rounded-xl bg-muted/30 text-xs font-bold">
+                      <span>{pm.method} Payments ({pm.count ?? 0} sales)</span>
+                      <span className="text-emerald-600">Rs {(pm.total ?? 0).toLocaleString()}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* SECTION 8: SETTINGS */}
-        {/* ========================================================================= */}
-        {activeSection === 'settings' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        {/* SETTINGS TAB */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
             <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                <SettingsIcon className="w-6 h-6 text-primary" />
-                POS & Restaurant Settings
+              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                <SettingsIcon className="w-6 h-6 text-primary" /> Tuck Shop Settings
               </h1>
-              <p className="text-muted-foreground text-sm mt-1">Configure restaurant details, currency, tax rates, and hardware</p>
+              <p className="text-muted-foreground text-sm">Configure store information and receipt header.</p>
             </div>
-
-            <form onSubmit={handleSaveSettings} className="bg-card rounded-2xl border p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Restaurant Name</label>
-                  <input
-                    type="text"
-                    value={settings.restaurantName}
-                    onChange={e => setSettings({ ...settings, restaurantName: e.target.value })}
-                    className="w-full h-11 px-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Tagline</label>
-                  <input
-                    type="text"
-                    value={settings.tagline}
-                    onChange={e => setSettings({ ...settings, tagline: e.target.value })}
-                    className="w-full h-11 px-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Contact Phone</label>
-                  <input
-                    type="text"
-                    value={settings.phone}
-                    onChange={e => setSettings({ ...settings, phone: e.target.value })}
-                    className="w-full h-11 px-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Email Address</label>
-                  <input
-                    type="email"
-                    value={settings.email}
-                    onChange={e => setSettings({ ...settings, email: e.target.value })}
-                    className="w-full h-11 px-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Physical Address</label>
-                  <input
-                    type="text"
-                    value={settings.address}
-                    onChange={e => setSettings({ ...settings, address: e.target.value })}
-                    className="w-full h-11 px-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Tax Rate (%)</label>
-                  <input
-                    type="number"
-                    value={settings.taxRate}
-                    onChange={e => setSettings({ ...settings, taxRate: Number(e.target.value) })}
-                    className="w-full h-11 px-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-muted-foreground uppercase mb-1.5">Service Charge (%)</label>
-                  <input
-                    type="number"
-                    value={settings.serviceChargeRate}
-                    onChange={e => setSettings({ ...settings, serviceChargeRate: Number(e.target.value) })}
-                    className="w-full h-11 px-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
+            <div className="bg-card rounded-2xl border p-6 space-y-4 max-w-xl">
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground mb-1">Store Name</label>
+                <input type="text" defaultValue={initialSettings.shopName} className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm font-semibold" />
               </div>
-
-              <div className="pt-4 border-t flex justify-end">
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm shadow-soft hover:opacity-95"
-                >
-                  Save Configuration
-                </button>
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground mb-1">Receipt Footer Line</label>
+                <input type="text" defaultValue={initialSettings.receiptFooter} className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm" />
               </div>
-            </form>
-          </motion.div>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* ========================================================================= */}
-      {/* MODALS */}
-      {/* ========================================================================= */}
-
-      {/* Add Product Modal */}
-      {showAddProductModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddProductModal(false)}>
-          <div className="bg-card rounded-2xl w-[420px] shadow-float p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-lg">Add New Dish</h3>
-              <button onClick={() => setShowAddProductModal(false)} className="p-1 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
-            </div>
-            <form onSubmit={handleAddProduct} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold mb-1 text-muted-foreground">Dish Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newProduct.name}
-                  onChange={e => setNewProduct({ ...newProduct, name: e.target.value })}
-                  placeholder="e.g. Chicken Biryani"
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-muted-foreground">Price (Rs.)</label>
-                  <input
-                    type="number"
-                    required
-                    value={newProduct.price}
-                    onChange={e => setNewProduct({ ...newProduct, price: Number(e.target.value) })}
-                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-muted-foreground">Emoji Icon</label>
-                  <input
-                    type="text"
-                    value={newProduct.image}
-                    onChange={e => setNewProduct({ ...newProduct, image: e.target.value })}
-                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm text-center"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold mb-1 text-muted-foreground">Category</label>
-                <select
-                  value={newProduct.category}
-                  onChange={e => setNewProduct({ ...newProduct, category: e.target.value })}
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                >
-                  {categoriesList.filter(c => c.id !== 'all').map(c => (
-                    <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <button type="submit" className="w-full mt-2 h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm shadow-soft">
-                Save Product
+      {/* ADD STOCK MODAL */}
+      {showAddStockModal && selectedStockProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-sm border shadow-float space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-lg">Add Stock Inventory</h3>
+              <button onClick={() => setShowAddStockModal(false)} className="p-1 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
               </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add Category Modal */}
-      {showAddCategoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddCategoryModal(false)}>
-          <div className="bg-card rounded-2xl w-[400px] shadow-float p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-lg">Add Menu Category</h3>
-              <button onClick={() => setShowAddCategoryModal(false)} className="p-1 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
             </div>
-            <form onSubmit={handleAddCategory} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold mb-1 text-muted-foreground">Category Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newCategory.name}
-                  onChange={e => setNewCategory({ ...newCategory, name: e.target.value })}
-                  placeholder="e.g. Pasta"
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold mb-1 text-muted-foreground">Icon Emoji</label>
-                <input
-                  type="text"
-                  value={newCategory.icon}
-                  onChange={e => setNewCategory({ ...newCategory, icon: e.target.value })}
-                  placeholder="🍝"
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm text-center"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold mb-1 text-muted-foreground">Subcategories (comma separated)</label>
-                <input
-                  type="text"
-                  value={newCategory.subcategories}
-                  onChange={e => setNewCategory({ ...newCategory, subcategories: e.target.value })}
-                  placeholder="e.g. Alfredo, Arrabbiata, Lasagna"
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                />
-              </div>
-              <button type="submit" className="w-full mt-2 h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm shadow-soft">
-                Save Category
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add Table Modal */}
-      {showAddTableModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddTableModal(false)}>
-          <div className="bg-card rounded-2xl w-[380px] shadow-float p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-lg">Add Floor Table</h3>
-              <button onClick={() => setShowAddTableModal(false)} className="p-1 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
+            <div className="text-center py-2">
+              <span className="text-4xl">{selectedStockProduct.image}</span>
+              <h4 className="font-bold text-base mt-2">{selectedStockProduct.name}</h4>
+              <p className="text-xs text-muted-foreground">Current Stock: <strong>{selectedStockProduct.stockQuantity ?? 0} units</strong></p>
             </div>
-            <form onSubmit={handleAddTable} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold mb-1 text-muted-foreground">Table Label / Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newTable.name}
-                  onChange={e => setNewTable({ ...newTable, name: e.target.value })}
-                  placeholder="e.g. T11 or VIP-1"
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold mb-1 text-muted-foreground">Seating Capacity</label>
-                <input
-                  type="number"
-                  required
-                  value={newTable.capacity}
-                  onChange={e => setNewTable({ ...newTable, capacity: Number(e.target.value) })}
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                />
-              </div>
-              <button type="submit" className="w-full mt-2 h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm shadow-soft">
-                Add Table
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add Staff Modal */}
-      {showAddStaffModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddStaffModal(false)}>
-          <div className="bg-card rounded-2xl w-[400px] shadow-float p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-lg">Add Team Member</h3>
-              <button onClick={() => setShowAddStaffModal(false)} className="p-1 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
-            </div>
-            <form onSubmit={handleAddStaff} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold mb-1 text-muted-foreground">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newStaff.name}
-                  onChange={e => setNewStaff({ ...newStaff, name: e.target.value })}
-                  placeholder="e.g. Ali Khan"
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold mb-1 text-muted-foreground">Email</label>
-                <input
-                  type="email"
-                  required
-                  value={newStaff.email}
-                  onChange={e => setNewStaff({ ...newStaff, email: e.target.value })}
-                  placeholder="ali@resto.com"
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-muted-foreground">Role</label>
-                  <select
-                    value={newStaff.role}
-                    onChange={e => setNewStaff({ ...newStaff, role: e.target.value as any })}
-                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                  >
-                    <option value="employee">Staff / Waiter</option>
-                    <option value="cashier">Cashier</option>
-                    <option value="manager">Manager</option>
-                    <option value="admin">Administrator</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold mb-1 text-muted-foreground">Shift</label>
-                  <select
-                    value={newStaff.shift}
-                    onChange={e => setNewStaff({ ...newStaff, shift: e.target.value })}
-                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm"
-                  >
-                    <option value="Morning">Morning</option>
-                    <option value="Evening">Evening</option>
-                    <option value="Night">Night</option>
-                  </select>
-                </div>
-              </div>
-              <button type="submit" className="w-full mt-2 h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm shadow-soft">
-                Save Member
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Order Details Receipt Modal */}
-      {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setSelectedOrder(null)}>
-          <div className="bg-card rounded-2xl w-[380px] shadow-float p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-lg">Order Receipt</h3>
-              <button onClick={() => setSelectedOrder(null)} className="p-1 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="border rounded-xl p-4 bg-muted/20 font-mono text-sm space-y-3">
-              <div className="text-center border-b pb-3">
-                <p className="font-bold text-base">🍽️ RestoPOS</p>
-                <p className="text-xs text-muted-foreground">{selectedOrder.orderNumber}</p>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span>Table: <strong>{selectedOrder.tableName}</strong></span>
-                <span>Server: <strong>{selectedOrder.serverName}</strong></span>
-              </div>
-              <div className="border-t pt-2 space-y-1.5">
-                {selectedOrder.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-xs">
-                    <span>{item.quantity}x {item.productName}</span>
-                    <span>Rs. {item.price * item.quantity}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t pt-2 flex justify-between font-bold text-sm">
-                <span>Total Amount</span>
-                <span>Rs. {selectedOrder.total.toLocaleString()}</span>
-              </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">New Stock Quantity Arrived</label>
+              <input
+                type="number"
+                value={stockAddAmount}
+                onChange={e => setStockAddAmount(e.target.value)}
+                placeholder="Enter quantity..."
+                className="w-full h-12 text-center text-xl font-bold rounded-xl border bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
             </div>
             <button
               onClick={() => {
-                toast.success('Receipt sent to thermal printer');
-                setSelectedOrder(null);
+                const qty = Number(stockAddAmount);
+                if (qty > 0) {
+                  addStockMutation.mutate({ productId: selectedStockProduct.id, qty });
+                }
               }}
-              className="w-full mt-4 h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 shadow-soft"
+              className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity"
             >
-              <Printer className="w-4 h-4" /> Print Receipt
+              Confirm Stock Add (+{stockAddAmount})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CATEGORY MODAL */}
+      {showAddCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md border shadow-float space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-lg">Add New Category</h3>
+              <button onClick={() => setShowAddCategoryModal(false)} className="p-1 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs font-semibold">
+              <div>
+                <label className="block text-muted-foreground mb-1">Category Name</label>
+                <input
+                  type="text"
+                  value={newCategory.name}
+                  onChange={e => setNewCategory(c => ({ ...c, name: e.target.value }))}
+                  placeholder="e.g. Beverages"
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Emoji Icon</label>
+                <input
+                  type="text"
+                  value={newCategory.icon}
+                  onChange={e => setNewCategory(c => ({ ...c, icon: e.target.value }))}
+                  placeholder="e.g. 🥤"
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none text-center"
+                />
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Subcategories (comma separated)</label>
+                <input
+                  type="text"
+                  value={newCategory.subcategories}
+                  onChange={e => setNewCategory(c => ({ ...c, subcategories: e.target.value }))}
+                  placeholder="e.g. Cold, Hot, Energy"
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleCreateCategory}
+              className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity mt-2"
+            >
+              Save Category
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ADD PRODUCT MODAL */}
+      {showAddProductModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md border shadow-float space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-lg">Add New Tuck Shop Product</h3>
+              <button onClick={() => setShowAddProductModal(false)} className="p-1 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs font-semibold">
+              <div>
+                <label className="block text-muted-foreground mb-1">Product Name</label>
+                <input
+                  type="text"
+                  value={newProduct.name}
+                  onChange={e => setNewProduct(p => ({ ...p, name: e.target.value }))}
+                  placeholder="e.g. Lays Masala"
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-muted-foreground mb-1">Price (PKR)</label>
+                  <input
+                    type="number"
+                    value={newProduct.price}
+                    onChange={e => setNewProduct(p => ({ ...p, price: Number(e.target.value) }))}
+                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-muted-foreground mb-1">Initial Stock</label>
+                  <input
+                    type="number"
+                    value={newProduct.stockQuantity}
+                    onChange={e => setNewProduct(p => ({ ...p, stockQuantity: Number(e.target.value) }))}
+                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Barcode (Optional)</label>
+                <input
+                  type="text"
+                  value={newProduct.barcode}
+                  onChange={e => setNewProduct(p => ({ ...p, barcode: e.target.value }))}
+                  placeholder="Scan or enter barcode digits..."
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none font-mono"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-muted-foreground mb-1">Category</label>
+                  <select
+                    value={newProduct.category}
+                    onChange={e => setNewProduct(p => ({ ...p, category: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none capitalize"
+                  >
+                    {categoriesList.filter(c => c.id !== 'all').map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-muted-foreground mb-1">Emoji Icon</label>
+                  <input
+                    type="text"
+                    value={newProduct.image}
+                    onChange={e => setNewProduct(p => ({ ...p, image: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none text-center"
+                  />
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={handleCreateProduct}
+              className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity mt-2"
+            >
+              Save Product
             </button>
           </div>
         </div>
@@ -1245,4 +833,3 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
-

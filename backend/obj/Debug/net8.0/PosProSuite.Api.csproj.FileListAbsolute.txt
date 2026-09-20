@@ -145,7 +145,6 @@ D:\POS\pos-pro-suite\backend\obj\Debug\net8.0\refint\PosProSuite.Api.dll
 D:\POS\pos-pro-suite\backend\obj\Debug\net8.0\PosProSuite.Api.pdb
 D:\POS\pos-pro-suite\backend\obj\Debug\net8.0\PosProSuite.Api.genruntimeconfig.cache
 D:\POS\pos-pro-suite\backend\obj\Debug\net8.0\ref\PosProSuite.Api.dll
-D:\POS\pos-pro-suite\backend\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
 F:\POS_React\pos-pro-suite\backend\bin\Debug\net8.0\appsettings.Development.json
 F:\POS_React\pos-pro-suite\backend\bin\Debug\net8.0\appsettings.json
 F:\POS_React\pos-pro-suite\backend\bin\Debug\net8.0\PosProSuite.Api.staticwebassets.endpoints.json
@@ -294,3 +293,4 @@ F:\POS_React\pos-pro-suite\backend\obj\Debug\net8.0\PosProSuite.Api.pdb
 F:\POS_React\pos-pro-suite\backend\obj\Debug\net8.0\PosProSuite.Api.genruntimeconfig.cache
 F:\POS_React\pos-pro-suite\backend\obj\Debug\net8.0\ref\PosProSuite.Api.dll
 F:\POS_React\pos-pro-suite\backend\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt
+D:\POS\pos-pro-suite\backend\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt

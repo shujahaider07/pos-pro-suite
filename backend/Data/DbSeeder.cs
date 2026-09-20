@@ -9,92 +9,84 @@ public static class DbSeeder
     {
         await context.Database.EnsureCreatedAsync();
 
-        if (!await context.Tables.AnyAsync())
-        {
-            var tables = new List<TableEntity>
-            {
-                new() { Id = 1, Name = "T1", Status = "available", Capacity = 4 },
-                new() { Id = 2, Name = "T2", Status = "occupied", Capacity = 4, OrderTotal = 1250, ElapsedMinutes = 32, OrderId = "ORD-2041" },
-                new() { Id = 3, Name = "T3", Status = "occupied", Capacity = 6, OrderTotal = 890, ElapsedMinutes = 15, OrderId = "ORD-2042" },
-                new() { Id = 4, Name = "T4", Status = "available", Capacity = 2 },
-                new() { Id = 5, Name = "T5", Status = "reserved", Capacity = 4 },
-                new() { Id = 6, Name = "T6", Status = "available", Capacity = 6 },
-                new() { Id = 7, Name = "T7", Status = "occupied", Capacity = 4, OrderTotal = 2100, ElapsedMinutes = 48, OrderId = "ORD-2039" },
-                new() { Id = 8, Name = "T8", Status = "available", Capacity = 2 },
-                new() { Id = 9, Name = "T9", Status = "reserved", Capacity = 8 },
-                new() { Id = 10, Name = "T10", Status = "available", Capacity = 4 }
-            };
-
-            using (var transaction = await context.Database.BeginTransactionAsync())
-            {
-                await context.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT [Tables] ON");
-                context.Tables.AddRange(tables);
-                await context.SaveChangesAsync();
-                await context.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT [Tables] OFF");
-                await transaction.CommitAsync();
-            }
-        }
-
         if (!await context.Categories.AnyAsync())
         {
             var categories = new List<CategoryEntity>
             {
-                new() { Id = "all", Name = "All Items", Icon = "🍽️" },
-                new() { Id = "starters", Name = "Starters", Icon = "🥗" },
-                new() { Id = "mains", Name = "Main Course", Icon = "🍖" },
-                new() { Id = "pizza", Name = "Pizza", Icon = "🍕" },
-                new() { Id = "burgers", Name = "Burgers", Icon = "🍔" },
-                new() { Id = "beverages", Name = "Beverages", Icon = "🥤" },
-                new() { Id = "desserts", Name = "Desserts", Icon = "🍰" }
+                new() { Id = "all",         Name = "All Items",   Icon = "🛒" },
+                new() { Id = "snacks",      Name = "Snacks",      Icon = "🍟" },
+                new() { Id = "drinks",      Name = "Drinks",      Icon = "🥤" },
+                new() { Id = "biscuits",    Name = "Biscuits",    Icon = "🍪" },
+                new() { Id = "stationery",  Name = "Stationery",  Icon = "✏️" },
+                new() { Id = "dairy",       Name = "Dairy",       Icon = "🥛" },
+                new() { Id = "confectionery", Name = "Sweets",    Icon = "🍬" },
             };
 
             context.Categories.AddRange(categories);
 
             var subcategories = new List<SubcategoryEntity>
             {
-                new() { Name = "Soups", CategoryId = "starters" },
-                new() { Name = "Salads", CategoryId = "starters" },
-                new() { Name = "Appetizers", CategoryId = "starters" },
-                new() { Name = "Chicken", CategoryId = "mains" },
-                new() { Name = "Seafood", CategoryId = "mains" },
-                new() { Name = "Vegetarian", CategoryId = "mains" },
-                new() { Name = "Classic", CategoryId = "pizza" },
-                new() { Name = "Premium", CategoryId = "pizza" },
-                new() { Name = "Beef", CategoryId = "burgers" },
-                new() { Name = "Chicken", CategoryId = "burgers" },
-                new() { Name = "Veggie", CategoryId = "burgers" },
-                new() { Name = "Hot", CategoryId = "beverages" },
-                new() { Name = "Cold", CategoryId = "beverages" },
-                new() { Name = "Juices", CategoryId = "beverages" },
-                new() { Name = "Cakes", CategoryId = "desserts" },
-                new() { Name = "Ice Cream", CategoryId = "desserts" }
+                new() { Name = "Chips",      CategoryId = "snacks" },
+                new() { Name = "Nuts",       CategoryId = "snacks" },
+                new() { Name = "Noodles",    CategoryId = "snacks" },
+                new() { Name = "Cold",       CategoryId = "drinks" },
+                new() { Name = "Hot",        CategoryId = "drinks" },
+                new() { Name = "Energy",     CategoryId = "drinks" },
+                new() { Name = "Cream",      CategoryId = "biscuits" },
+                new() { Name = "Plain",      CategoryId = "biscuits" },
+                new() { Name = "Pens",       CategoryId = "stationery" },
+                new() { Name = "Notebooks",  CategoryId = "stationery" },
+                new() { Name = "Erasers",    CategoryId = "stationery" },
+                new() { Name = "Milk",       CategoryId = "dairy" },
+                new() { Name = "Yogurt",     CategoryId = "dairy" },
+                new() { Name = "Candy",      CategoryId = "confectionery" },
+                new() { Name = "Chocolate",  CategoryId = "confectionery" },
+                new() { Name = "Gum",        CategoryId = "confectionery" },
             };
 
             context.Subcategories.AddRange(subcategories);
+            await context.SaveChangesAsync();
         }
 
         if (!await context.Products.AnyAsync())
         {
             var products = new List<ProductEntity>
             {
-                new() { Id = 1, Name = "Caesar Salad", Price = 320, CategoryId = "starters", Subcategory = "Salads", Image = "🥗", Available = true },
-                new() { Id = 2, Name = "Tomato Soup", Price = 220, CategoryId = "starters", Subcategory = "Soups", Image = "🍲", Available = true },
-                new() { Id = 3, Name = "Spring Rolls", Price = 280, CategoryId = "starters", Subcategory = "Appetizers", Image = "🥟", Available = true },
-                new() { Id = 4, Name = "Grilled Chicken", Price = 550, CategoryId = "mains", Subcategory = "Chicken", Image = "🍗", Available = true },
-                new() { Id = 5, Name = "Butter Chicken", Price = 480, CategoryId = "mains", Subcategory = "Chicken", Image = "🍛", Available = true },
-                new() { Id = 6, Name = "Fish & Chips", Price = 520, CategoryId = "mains", Subcategory = "Seafood", Image = "🐟", Available = true },
-                new() { Id = 7, Name = "Paneer Tikka", Price = 380, CategoryId = "mains", Subcategory = "Vegetarian", Image = "🧀", Available = true },
-                new() { Id = 8, Name = "Margherita Pizza", Price = 420, CategoryId = "pizza", Subcategory = "Classic", Image = "🍕", Available = true },
-                new() { Id = 9, Name = "Pepperoni Pizza", Price = 520, CategoryId = "pizza", Subcategory = "Classic", Image = "🍕", Available = true },
-                new() { Id = 10, Name = "BBQ Chicken Pizza", Price = 580, CategoryId = "pizza", Subcategory = "Premium", Image = "🍕", Available = false },
-                new() { Id = 11, Name = "Classic Burger", Price = 350, CategoryId = "burgers", Subcategory = "Beef", Image = "🍔", Available = true },
-                new() { Id = 12, Name = "Cheese Burger", Price = 400, CategoryId = "burgers", Subcategory = "Beef", Image = "🍔", Available = true },
-                new() { Id = 13, Name = "Chicken Burger", Price = 380, CategoryId = "burgers", Subcategory = "Chicken", Image = "🍔", Available = true },
-                new() { Id = 14, Name = "Espresso", Price = 150, CategoryId = "beverages", Subcategory = "Hot", Image = "☕", Available = true },
-                new() { Id = 15, Name = "Iced Latte", Price = 200, CategoryId = "beverages", Subcategory = "Cold", Image = "🧊", Available = true },
-                new() { Id = 16, Name = "Fresh Orange Juice", Price = 180, CategoryId = "beverages", Subcategory = "Juices", Image = "🍊", Available = true },
-                new() { Id = 17, Name = "Chocolate Cake", Price = 280, CategoryId = "desserts", Subcategory = "Cakes", Image = "🍫", Available = true },
-                new() { Id = 18, Name = "Vanilla Ice Cream", Price = 180, CategoryId = "desserts", Subcategory = "Ice Cream", Image = "🍨", Available = true }
+                // Snacks
+                new() { Id = 1,  Name = "Lays Classic",       Price = 30,  CategoryId = "snacks",      Subcategory = "Chips",     Image = "🥔", Available = true,  StockQuantity = 50, Barcode = "8901234560001" },
+                new() { Id = 2,  Name = "Kurkure Masala",     Price = 20,  CategoryId = "snacks",      Subcategory = "Chips",     Image = "🌽", Available = true,  StockQuantity = 60, Barcode = "8901234560002" },
+                new() { Id = 3,  Name = "Pringles Original",  Price = 150, CategoryId = "snacks",      Subcategory = "Chips",     Image = "🍟", Available = true,  StockQuantity = 20, Barcode = "8901234560003" },
+                new() { Id = 4,  Name = "Peanuts Salted",     Price = 25,  CategoryId = "snacks",      Subcategory = "Nuts",      Image = "🥜", Available = true,  StockQuantity = 40, Barcode = "8901234560004" },
+                new() { Id = 5,  Name = "Indomie Noodles",    Price = 35,  CategoryId = "snacks",      Subcategory = "Noodles",   Image = "🍜", Available = true,  StockQuantity = 30, Barcode = "8901234560005" },
+
+                // Drinks
+                new() { Id = 6,  Name = "Coca Cola 500ml",    Price = 60,  CategoryId = "drinks",      Subcategory = "Cold",      Image = "🥤", Available = true,  StockQuantity = 48, Barcode = "5449000000996" },
+                new() { Id = 7,  Name = "Pepsi 500ml",        Price = 60,  CategoryId = "drinks",      Subcategory = "Cold",      Image = "🥤", Available = true,  StockQuantity = 36, Barcode = "4890008100309" },
+                new() { Id = 8,  Name = "Mineral Water 500ml",Price = 30,  CategoryId = "drinks",      Subcategory = "Cold",      Image = "💧", Available = true,  StockQuantity = 100,Barcode = "8901234560008" },
+                new() { Id = 9,  Name = "Red Bull 250ml",     Price = 150, CategoryId = "drinks",      Subcategory = "Energy",    Image = "⚡", Available = true,  StockQuantity = 24, Barcode = "9002490100070" },
+                new() { Id = 10, Name = "Nescafe Sachet",     Price = 25,  CategoryId = "drinks",      Subcategory = "Hot",       Image = "☕", Available = true,  StockQuantity = 80, Barcode = "8901234560010" },
+                new() { Id = 11, Name = "Lipton Tea Bag",     Price = 10,  CategoryId = "drinks",      Subcategory = "Hot",       Image = "🍵", Available = true,  StockQuantity = 100,Barcode = "8901234560011" },
+
+                // Biscuits
+                new() { Id = 12, Name = "Oreo Original",      Price = 50,  CategoryId = "biscuits",    Subcategory = "Cream",     Image = "🍪", Available = true,  StockQuantity = 40, Barcode = "7622210713780" },
+                new() { Id = 13, Name = "Hide & Seek",        Price = 30,  CategoryId = "biscuits",    Subcategory = "Cream",     Image = "🍪", Available = true,  StockQuantity = 35, Barcode = "8901234560013" },
+                new() { Id = 14, Name = "Marie Gold",         Price = 25,  CategoryId = "biscuits",    Subcategory = "Plain",     Image = "🫓", Available = true,  StockQuantity = 50, Barcode = "8901234560014" },
+
+                // Stationery
+                new() { Id = 15, Name = "Ball Pen Blue",      Price = 10,  CategoryId = "stationery",  Subcategory = "Pens",      Image = "✏️", Available = true,  StockQuantity = 100,Barcode = "8901234560015" },
+                new() { Id = 16, Name = "Ball Pen Black",     Price = 10,  CategoryId = "stationery",  Subcategory = "Pens",      Image = "🖊️", Available = true,  StockQuantity = 100,Barcode = "8901234560016" },
+                new() { Id = 17, Name = "Eraser White",       Price = 5,   CategoryId = "stationery",  Subcategory = "Erasers",   Image = "🧹", Available = true,  StockQuantity = 80, Barcode = "8901234560017" },
+                new() { Id = 18, Name = "A4 Notebook",        Price = 80,  CategoryId = "stationery",  Subcategory = "Notebooks", Image = "📓", Available = true,  StockQuantity = 25, Barcode = "8901234560018" },
+
+                // Dairy
+                new() { Id = 19, Name = "Milk Pouch 500ml",   Price = 55,  CategoryId = "dairy",       Subcategory = "Milk",      Image = "🥛", Available = true,  StockQuantity = 20, Barcode = "8901234560019" },
+                new() { Id = 20, Name = "Yogurt Cup",         Price = 45,  CategoryId = "dairy",       Subcategory = "Yogurt",    Image = "🍦", Available = true,  StockQuantity = 15, Barcode = "8901234560020" },
+
+                // Confectionery
+                new() { Id = 21, Name = "Kit Kat",            Price = 50,  CategoryId = "confectionery",Subcategory = "Chocolate", Image = "🍫", Available = true,  StockQuantity = 40, Barcode = "5000159484695" },
+                new() { Id = 22, Name = "Dairy Milk",         Price = 60,  CategoryId = "confectionery",Subcategory = "Chocolate", Image = "🍫", Available = true,  StockQuantity = 35, Barcode = "7622210313231" },
+                new() { Id = 23, Name = "Mint Gum",           Price = 20,  CategoryId = "confectionery",Subcategory = "Gum",       Image = "🍬", Available = true,  StockQuantity = 60, Barcode = "8901234560023" },
+                new() { Id = 24, Name = "Mixed Candy Bag",    Price = 30,  CategoryId = "confectionery",Subcategory = "Candy",     Image = "🍭", Available = true,  StockQuantity = 45, Barcode = "8901234560024" },
             };
 
             using (var transaction = await context.Database.BeginTransactionAsync())
@@ -111,8 +103,8 @@ public static class DbSeeder
         {
             var users = new List<UserEntity>
             {
-                new() { Email = "admin@restaurant.com", PasswordHash = "admin123", Role = "admin" },
-                new() { Email = "staff@restaurant.com", PasswordHash = "staff123", Role = "employee" }
+                new() { Email = "admin@tuckshop.com",  PasswordHash = "admin123", Role = "admin" },
+                new() { Email = "cashier@tuckshop.com",PasswordHash = "cash123",  Role = "employee" }
             };
 
             context.Users.AddRange(users);

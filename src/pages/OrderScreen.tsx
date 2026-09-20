@@ -1,97 +1,38 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useLocation, useParams, useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, ArrowLeft, UtensilsCrossed } from 'lucide-react';
-import { initialProducts, initialCategories, initialTables, type CartItem, type Product, type Category, type TableData } from '@/lib/mock-data';
+import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus } from 'lucide-react';
+import { initialProducts, initialCategories, type CartItem, type Product, type Category } from '@/lib/mock-data';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ProductCard from '@/components/pos/ProductCard';
-import CartPanel from '@/components/pos/CartPanel';
 import PaymentModal from '@/components/pos/PaymentModal';
-import KOTReceipt from '@/components/pos/KOTReceipt';
+import TuckShopReceipt from '@/components/pos/TuckShopReceipt';
 import { toast } from 'sonner';
 
 const OrderScreen = () => {
-  const { tableId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation() as Location & { state?: { table?: TableData } };
   const queryClient = useQueryClient();
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
-
-  const defaultTable = useMemo(() => {
-    const numericId = Number(tableId);
-    return initialTables.find(t => t.id === numericId) || {
-      id: numericId || 1,
-      name: `T${numericId || 1}`,
-      status: 'available' as const,
-      capacity: 4,
-    };
-  }, [tableId]);
-
-  const { data: tableFromApi } = useQuery<TableData | null>({
-    queryKey: ['table', tableId],
-    queryFn: async () => {
-      if (!tableId) return null;
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/tables/${tableId}`);
-        if (!response.ok) return null;
-        return response.json();
-      } catch {
-        return null;
-      }
-    },
-    enabled: !location.state?.table && !!tableId,
-  });
-
-  const table: TableData = (location.state?.table as TableData | undefined) ?? tableFromApi ?? defaultTable;
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5001';
 
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [activeSubcategory, setActiveSubcategory] = useState<string | null>(null);
-  
-  // Initialize cart from localStorage if this table had held items
-  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
-    try {
-      const stored = localStorage.getItem(`restopos_held_table_${table.id}`);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch {}
-    return [];
-  });
-  
-  const [elapsed] = useState(table?.elapsedMinutes || 0);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showPayment, setShowPayment] = useState(false);
-  const [showKOT, setShowKOT] = useState(false);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [lastOrderNumber, setLastOrderNumber] = useState('');
+  const [lastPaymentMethod, setLastPaymentMethod] = useState<'Cash' | 'Digital'>('Cash');
+  const [lastCashReceived, setLastCashReceived] = useState<number | undefined>(undefined);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
 
-  // Check backend for existing held / active order on this table
+  // Focus search input on mount so barcode scanner works immediately
   useEffect(() => {
-    if (!table.id) return;
-    fetch(`${API_BASE_URL}/api/orders/table/${table.id}`)
-      .then(res => (res.ok ? res.json() : null))
-      .then(data => {
-        if (data && Array.isArray(data.items) && data.items.length > 0) {
-          setCurrentOrderId(data.id);
-          const mappedItems: CartItem[] = data.items.map((item: any) => ({
-            product: item.product || {
-              id: item.productId,
-              name: item.productName || `Item #${item.productId}`,
-              price: item.unitPrice || 250,
-              category: 'mains',
-              categoryId: 'mains',
-              image: '🍽️',
-              available: true,
-            },
-            quantity: item.quantity,
-          }));
-          setCartItems(mappedItems);
-          localStorage.setItem(`restopos_held_table_${table.id}`, JSON.stringify(mappedItems));
-        }
-      })
-      .catch(() => {});
-  }, [table.id, API_BASE_URL]);
+    searchInputRef.current?.focus();
+  }, []);
 
+  // Fetch Categories
   const { data: categories = initialCategories } = useQuery<Category[]>({
     queryKey: ['categories'],
     queryFn: async () => {
@@ -107,7 +48,8 @@ const OrderScreen = () => {
     initialData: initialCategories,
   });
 
-  const { data: productsFromApi = initialProducts, isLoading: isProductsLoading } = useQuery<Product[]>({
+  // Fetch Products & Stock
+  const { data: productsFromApi = initialProducts } = useQuery<Product[]>({
     queryKey: ['products', activeCategory, activeSubcategory, search],
     queryFn: async () => {
       try {
@@ -116,8 +58,7 @@ const OrderScreen = () => {
         if (activeSubcategory) params.append('subcategory', activeSubcategory);
         if (search) params.append('search', search);
 
-        const queryString = params.toString();
-        const response = await fetch(`${API_BASE_URL}/api/products${queryString ? `?${queryString}` : ''}`);
+        const response = await fetch(`${API_BASE_URL}/api/products${params.toString() ? `?${params.toString()}` : ''}`);
         if (!response.ok) return initialProducts;
         const data = await response.json();
         return Array.isArray(data) && data.length > 0 ? data : initialProducts;
@@ -128,33 +69,66 @@ const OrderScreen = () => {
     initialData: initialProducts,
   });
 
-  // Filter products locally if needed
+  // Filter products locally
   const displayProducts = useMemo(() => {
     let list = productsFromApi && productsFromApi.length > 0 ? productsFromApi : initialProducts;
     if (activeCategory && activeCategory !== 'all') {
-      list = list.filter(p => (p.category === activeCategory || p.categoryId === activeCategory));
+      list = list.filter(p => p.category === activeCategory || p.categoryId === activeCategory);
     }
     if (activeSubcategory) {
       list = list.filter(p => p.subcategory?.toLowerCase() === activeSubcategory.toLowerCase());
     }
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(q));
+      list = list.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        (p.barcode && p.barcode.includes(q))
+      );
     }
     return list;
   }, [productsFromApi, activeCategory, activeSubcategory, search]);
 
   const currentCategory = categories.find(c => c.id === activeCategory);
 
+  // Add item to cart
   const addToCart = (product: Product) => {
+    if (!product.available || (product.stockQuantity !== undefined && product.stockQuantity <= 0)) {
+      toast.error(`${product.name} is out of stock!`);
+      return;
+    }
+
     setCartItems(prev => {
       const existing = prev.find(i => i.product.id === product.id);
       if (existing) {
+        // Stock check
+        if (product.stockQuantity !== undefined && existing.quantity >= product.stockQuantity) {
+          toast.error(`Cannot add more. Only ${product.stockQuantity} in stock.`);
+          return prev;
+        }
         return prev.map(i => (i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i));
       }
       return [...prev, { product, quantity: 1 }];
     });
+
     toast.success(`${product.name} added to cart`);
+  };
+
+  // Barcode Scanner Listener — auto adds to cart when exact barcode is scanned or Enter is pressed
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && search.trim()) {
+      const query = search.trim();
+      // Try exact barcode match first
+      const matched = productsFromApi.find(
+        p => p.barcode === query || p.name.toLowerCase() === query.toLowerCase()
+      );
+      if (matched) {
+        addToCart(matched);
+        setSearch('');
+      } else if (displayProducts.length === 1) {
+        addToCart(displayProducts[0]);
+        setSearch('');
+      }
+    }
   };
 
   const updateQuantity = (productId: number, delta: number) => {
@@ -163,6 +137,10 @@ const OrderScreen = () => {
         .map(i => {
           if (i.product.id !== productId) return i;
           const newQty = i.quantity + delta;
+          if (delta > 0 && i.product.stockQuantity !== undefined && newQty > i.product.stockQuantity) {
+            toast.error(`Stock limit reached (${i.product.stockQuantity} available)`);
+            return i;
+          }
           return newQty <= 0 ? null : { ...i, quantity: newQty };
         })
         .filter(Boolean) as CartItem[]
@@ -171,211 +149,115 @@ const OrderScreen = () => {
 
   const removeItem = (productId: number) => {
     setCartItems(prev => prev.filter(i => i.product.id !== productId));
-    toast.info('Item removed from cart');
+    toast.info('Item removed');
   };
 
   const createOrderMutation = useMutation({
-    mutationFn: async () => {
-      if (!table) {
-        throw new Error('Table not loaded');
-      }
-      if (cartItems.length === 0) {
-        throw new Error('Cart is empty');
-      }
-
+    mutationFn: async (paymentMethod: string) => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/orders`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            tableId: table.id,
+            paymentMethod,
             items: cartItems.map(item => ({
               productId: item.product.id,
               quantity: item.quantity,
             })),
           }),
         });
-
         if (response.ok) {
-          return response.json() as Promise<{ id: number }>;
+          return response.json() as Promise<{ id: number; orderNumber: string }>;
         }
-      } catch {
-        // Local fallback
-      }
-      return { id: Math.floor(Math.random() * 9000) + 1000 };
+      } catch {}
+      return { id: Math.floor(Math.random() * 9000) + 1000, orderNumber: `TK-${Date.now().toString().slice(-4)}` };
     },
     onSuccess: data => {
       setCurrentOrderId(data.id);
-      setShowPayment(true);
-      toast.success('Order ready for payment');
-    },
-    onError: () => {
-      setShowPayment(true);
+      setLastOrderNumber(data.orderNumber);
     },
   });
 
   const completeOrderMutation = useMutation({
     mutationFn: async (orderId: number) => {
       try {
-        await fetch(`${API_BASE_URL}/api/orders/${orderId}/complete`, {
-          method: 'POST',
-        });
-      } catch {
-        // Local mode
-      }
+        await fetch(`${API_BASE_URL}/api/orders/${orderId}/complete`, { method: 'POST' });
+      } catch {}
     },
     onSuccess: () => {
-      localStorage.removeItem(`restopos_held_table_${table.id}`);
-      queryClient.invalidateQueries({ queryKey: ['tables'] });
-      toast.success('Payment completed successfully!');
-      navigate('/tables');
-    },
-    onError: () => {
-      localStorage.removeItem(`restopos_held_table_${table.id}`);
-      queryClient.invalidateQueries({ queryKey: ['tables'] });
-      toast.success('Payment recorded');
-      navigate('/tables');
-    },
-  });
-
-  const holdOrderMutation = useMutation({
-    mutationFn: async (orderId: number) => {
-      try {
-        await fetch(`${API_BASE_URL}/api/orders/${orderId}/hold`, {
-          method: 'POST',
-        });
-      } catch {
-        // Local mode
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tables'] });
-      toast.info('Order placed on Hold');
-      navigate('/tables');
-    },
-    onError: () => {
-      queryClient.invalidateQueries({ queryKey: ['tables'] });
-      toast.info('Order placed on Hold');
-      navigate('/tables');
-    },
-  });
-
-  const cancelOrderMutation = useMutation({
-    mutationFn: async (orderId: number) => {
-      try {
-        await fetch(`${API_BASE_URL}/api/orders/${orderId}/cancel`, {
-          method: 'POST',
-        });
-      } catch {
-        // Local mode
-      }
-    },
-    onSuccess: () => {
-      localStorage.removeItem(`restopos_held_table_${table.id}`);
-      queryClient.invalidateQueries({ queryKey: ['tables'] });
-      setCartItems([]);
-      toast.error('Order cancelled');
-      navigate('/tables');
-    },
-    onError: () => {
-      localStorage.removeItem(`restopos_held_table_${table.id}`);
-      queryClient.invalidateQueries({ queryKey: ['tables'] });
-      setCartItems([]);
-      toast.error('Order cancelled');
-      navigate('/tables');
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
     },
   });
 
   const handleProceedPayment = () => {
     if (cartItems.length === 0) {
-      toast.error('Please add items to cart before proceeding to payment');
-      return;
-    }
-    if (currentOrderId) {
-      setShowPayment(true);
-    } else {
-      createOrderMutation.mutate();
-    }
-  };
-
-  const handleHoldOrder = async () => {
-    if (cartItems.length === 0) {
       toast.error('Cart is empty');
       return;
     }
-    // Save to local storage for persistence across reloads and table visits
-    localStorage.setItem(`restopos_held_table_${table.id}`, JSON.stringify(cartItems));
-
-    try {
-      if (currentOrderId) {
-        await fetch(`${API_BASE_URL}/api/orders/${currentOrderId}/hold`, { method: 'POST' });
-      } else {
-        await fetch(`${API_BASE_URL}/api/orders`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tableId: table.id,
-            status: 'Held',
-            items: cartItems.map(item => ({
-              productId: item.product.id,
-              quantity: item.quantity,
-            })),
-          }),
-        });
-      }
-    } catch {}
-
-    queryClient.invalidateQueries({ queryKey: ['tables'] });
-    toast.info(`Order for Table ${table.name} placed on Hold ⏸️`);
-    navigate('/tables');
+    createOrderMutation.mutate('Cash');
+    setShowPayment(true);
   };
 
-  const handleCancelOrder = () => {
-    localStorage.removeItem(`restopos_held_table_${table.id}`);
+  const handlePaymentSuccess = (method: 'Cash' | 'Digital', cashReceived?: number) => {
+    setLastPaymentMethod(method);
+    setLastCashReceived(cashReceived);
     if (currentOrderId) {
-      cancelOrderMutation.mutate(currentOrderId);
-    } else {
-      setCartItems([]);
-      toast.error('Order cancelled');
-      navigate('/tables');
+      completeOrderMutation.mutate(currentOrderId);
     }
+
+    setShowPayment(false);
+    setShowReceipt(true);
+    toast.success('Sale completed successfully! 🎉');
   };
+
+  const handleClearOrder = () => {
+    setCartItems([]);
+    setCurrentOrderId(null);
+    searchInputRef.current?.focus();
+  };
+
+  const subtotal = cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Left - Products & Menu */}
+      {/* Left Column: Products & Menu */}
       <div className="flex-1 flex flex-col min-w-0 border-r" style={{ width: '65%' }}>
-        {/* Top Bar */}
+        {/* Top Header & Barcode Search */}
         <div className="px-6 py-4 bg-card/80 backdrop-blur-xl border-b flex items-center gap-4">
           <button
-            onClick={() => navigate('/tables')}
+            onClick={() => navigate('/admin')}
             className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title="Back to Tables"
+            title="Admin Dashboard"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center text-primary-foreground shadow-soft">
-              <UtensilsCrossed className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-soft">
+              🛒
             </div>
             <div>
-              <span className="font-bold text-base">Table {table.name}</span>
-              <span className="block text-[10px] text-muted-foreground">{table.capacity} Seats</span>
+              <span className="font-bold text-base leading-none block">TuckShop POS</span>
+              <span className="text-[10px] text-muted-foreground">Counter Sales</span>
             </div>
           </div>
+
+          {/* Barcode / Search Box */}
           <div className="flex-1 relative ml-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-pulse" />
             <input
+              ref={searchInputRef}
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search dishes, drinks, pizzas..."
-              className="w-full h-10 pl-10 pr-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Scan Barcode or type item name... (Press Enter to add)"
+              className="w-full h-11 pl-10 pr-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
             />
           </div>
         </div>
 
-        {/* Categories Carousel */}
+        {/* Categories Bar */}
         <div className="px-6 py-3 border-b bg-card">
           <div className="flex gap-2 overflow-x-auto pos-scrollbar pb-1">
             {categories.map(cat => (
@@ -396,13 +278,14 @@ const OrderScreen = () => {
               </button>
             ))}
           </div>
+
           {/* Subcategories */}
           {currentCategory?.subcategories && currentCategory.subcategories.length > 0 && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="flex gap-2 mt-2 pt-2 border-t overflow-x-auto pos-scrollbar">
               <button
                 onClick={() => setActiveSubcategory(null)}
                 className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                  !activeSubcategory ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
+                  !activeSubcategory ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
                 }`}
               >
                 All
@@ -412,7 +295,7 @@ const OrderScreen = () => {
                   key={sub}
                   onClick={() => setActiveSubcategory(sub)}
                   className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                    activeSubcategory === sub ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
+                    activeSubcategory === sub ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {sub}
@@ -427,8 +310,8 @@ const OrderScreen = () => {
           {displayProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
               <Search className="w-10 h-10 mb-3 opacity-20" />
-              <p className="text-sm font-semibold">No food items found</p>
-              <p className="text-xs text-muted-foreground mt-1">Try another category or search keyword</p>
+              <p className="text-sm font-semibold">No items found</p>
+              <p className="text-xs mt-1">Try scanning barcode or typing name</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -440,48 +323,112 @@ const OrderScreen = () => {
         </div>
       </div>
 
-      {/* Right - Live Cart Panel */}
-      <div className="w-[35%] min-w-[340px]">
-        <CartPanel
-          table={table}
-          items={cartItems}
-          onUpdateQuantity={updateQuantity}
-          onRemoveItem={removeItem}
-          onPrintKOT={() => {
-            if (cartItems.length === 0) {
-              toast.error('Cart is empty! Add items to print KOT.');
-              return;
-            }
-            setShowKOT(true);
-          }}
-          onHoldOrder={handleHoldOrder}
-          onProceedPayment={handleProceedPayment}
-          onCancelOrder={handleCancelOrder}
-          elapsedMinutes={elapsed}
-        />
+      {/* Right Column: Cart Panel */}
+      <div className="w-[35%] min-w-[340px] flex flex-col bg-card border-l">
+        <div className="p-5 border-b flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-lg flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-primary" /> Current Cart
+            </h2>
+            <p className="text-xs text-muted-foreground">{cartItems.reduce((s, i) => s + i.quantity, 0)} items</p>
+          </div>
+          {cartItems.length > 0 && (
+            <button
+              onClick={handleClearOrder}
+              className="text-xs text-destructive hover:bg-destructive/10 px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1 font-medium"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Clear Cart
+            </button>
+          )}
+        </div>
+
+        {/* Cart Items List */}
+        <div className="flex-1 overflow-y-auto pos-scrollbar p-4 space-y-2">
+          {cartItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground py-16">
+              <ShoppingBag className="w-12 h-12 mb-3 opacity-20" />
+              <p className="text-sm font-medium">Cart is empty</p>
+              <p className="text-xs mt-1 text-center max-w-[200px]">Scan a barcode or click items on the left to add</p>
+            </div>
+          ) : (
+            cartItems.map(item => (
+              <motion.div
+                key={item.product.id}
+                layout
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20, height: 0 }}
+                className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 group"
+              >
+                <span className="text-2xl">{item.product.image}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{item.product.name}</p>
+                  <p className="text-xs text-muted-foreground">Rs {item.product.price} each</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => updateQuantity(item.product.id, -1)}
+                    className="w-7 h-7 rounded-lg border flex items-center justify-center hover:bg-muted transition-colors"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
+                  <button
+                    onClick={() => updateQuantity(item.product.id, 1)}
+                    className="w-7 h-7 rounded-lg border flex items-center justify-center hover:bg-muted transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+                <span className="text-sm font-bold w-16 text-right">Rs {item.product.price * item.quantity}</span>
+                <button
+                  onClick={() => removeItem(item.product.id)}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </motion.div>
+            ))
+          )}
+        </div>
+
+        {/* Footer & Payment Action */}
+        {cartItems.length > 0 && (
+          <div className="border-t p-5 space-y-4">
+            <div className="flex justify-between items-center font-bold text-xl">
+              <span>Total</span>
+              <span className="text-gradient-primary">Rs {subtotal.toLocaleString()}</span>
+            </div>
+            <button
+              onClick={handleProceedPayment}
+              className="w-full h-13 rounded-xl gradient-primary text-primary-foreground font-bold text-base shadow-elevated hover:shadow-float transition-all flex items-center justify-center gap-2"
+            >
+              💳 Collect Payment (Rs {subtotal})
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Payment Modal */}
       {showPayment && (
         <PaymentModal
-          total={cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0) * 1.07}
+          total={subtotal}
           onClose={() => setShowPayment(false)}
-          onComplete={() => {
-            if (currentOrderId) {
-              completeOrderMutation.mutate(currentOrderId);
-            } else {
-              toast.success('Payment completed!');
-              navigate('/tables');
-            }
-            setShowPayment(false);
-          }}
+          onComplete={handlePaymentSuccess}
         />
       )}
 
-      {showKOT && (
-        <KOTReceipt
-          table={table}
+      {/* Thermal Receipt Modal */}
+      {showReceipt && (
+        <TuckShopReceipt
+          orderNumber={lastOrderNumber || `TK-${Date.now().toString().slice(-4)}`}
           items={cartItems}
-          onClose={() => setShowKOT(false)}
+          paymentMethod={lastPaymentMethod}
+          cashReceived={lastCashReceived}
+          onClose={() => {
+            setShowReceipt(false);
+            handleClearOrder();
+          }}
         />
       )}
     </div>
@@ -489,4 +436,3 @@ const OrderScreen = () => {
 };
 
 export default OrderScreen;
-

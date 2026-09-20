@@ -6,8 +6,8 @@ import { useAuth } from '@/lib/pos-context';
 import loginIllustration from '@/assets/login-illustration.jpg';
 
 const Login = () => {
-  const [email, setEmail] = useState('admin@resto.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'employee'>('admin');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,7 +30,7 @@ const Login = () => {
       setPassword('emp123');
       setRole('employee');
       login('john@resto.com', 'emp123', 'employee', 'John');
-      navigate('/tables');
+      navigate('/order');
     }
   };
 
@@ -60,7 +60,7 @@ const Login = () => {
         setIsBackendConnected(true);
         const data = await response.json();
         login(email, password, role, data.name || data.email?.split('@')[0]);
-        navigate(role === 'admin' ? '/admin' : '/tables');
+        navigate(role === 'admin' ? '/admin' : '/order');
         return;
       } else {
         // Check if demo credentials match
@@ -132,31 +132,8 @@ const Login = () => {
           </div>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold mb-1 tracking-tight">Welcome to RestoPOS</h2>
-            <p className="text-muted-foreground text-sm">Sign in with your account or use quick demo access</p>
-          </div>
-
-          {/* Quick Demo Login Bar */}
-          <div className="mb-6 p-3 rounded-2xl bg-muted/40 border space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">⚡ Instant 1-Click Demo Login:</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin')}
-                className="py-2 px-3 rounded-xl bg-card hover:bg-primary hover:text-primary-foreground border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Admin Panel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('employee')}
-                className="py-2 px-3 rounded-xl bg-card hover:bg-primary hover:text-primary-foreground border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
-              >
-                <UserCheck className="w-3.5 h-3.5" />
-                Tables & Orders
-              </button>
-            </div>
+            <h2 className="text-2xl font-bold mb-1 tracking-tight">Welcome to TuckShop POS</h2>
+            <p className="text-muted-foreground text-sm">Sign in with your account credentials</p>
           </div>
 
           {error && (

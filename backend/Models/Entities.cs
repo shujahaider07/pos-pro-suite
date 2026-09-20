@@ -2,20 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace PosProSuite.Api.Models;
 
-public class TableEntity
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string Status { get; set; } = "available";
-    public int Capacity { get; set; }
-    public decimal? OrderTotal { get; set; }
-    public int? ElapsedMinutes { get; set; }
-
-    [JsonPropertyName("orderId")]
-    public string? OrderId { get; set; }
-    public ICollection<OrderEntity> Orders { get; set; } = new List<OrderEntity>();
-}
-
 public class ProductEntity
 {
     public int Id { get; set; }
@@ -25,6 +11,8 @@ public class ProductEntity
     public string? Subcategory { get; set; }
     public string Image { get; set; } = string.Empty;
     public bool Available { get; set; }
+    public int StockQuantity { get; set; } = 0;
+    public string? Barcode { get; set; }
 }
 
 public class CategoryEntity
@@ -47,12 +35,11 @@ public class OrderEntity
 {
     public int Id { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
-    public int TableId { get; set; }
-    public TableEntity? Table { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public string Status { get; set; } = "Active";
     public decimal TotalAmount { get; set; }
+    public string PaymentMethod { get; set; } = "Cash";
     public ICollection<OrderItemEntity> Items { get; set; } = new List<OrderItemEntity>();
 }
 
@@ -67,6 +54,16 @@ public class OrderItemEntity
     public decimal UnitPrice { get; set; }
 }
 
+public class StockLogEntity
+{
+    public int Id { get; set; }
+    public int ProductId { get; set; }
+    public ProductEntity? Product { get; set; }
+    public int QuantityChange { get; set; }   // +ve = stock added, -ve = sold/deducted
+    public string Reason { get; set; } = "Sale"; // "Sale", "StockIn", "Adjustment"
+    public DateTime CreatedAt { get; set; }
+}
+
 public class UserEntity
 {
     public int Id { get; set; }
@@ -74,4 +71,3 @@ public class UserEntity
     public string PasswordHash { get; set; } = string.Empty;
     public string Role { get; set; } = "employee";
 }
-
