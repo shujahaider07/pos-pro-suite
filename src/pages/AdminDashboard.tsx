@@ -17,7 +17,7 @@ import ReturnModal from '@/components/pos/ReturnModal';
 import { RotateCcw } from 'lucide-react';
 import {
   dashboardStats as mockStats, initialProducts, initialCategories,
-  initialStaff, initialOrders, initialSettings,
+  initialStaff, initialOrders, initialSettings, getStoredTaxRate, setStoredTaxRate,
   type Product, type Category, type StaffMember,
   type OrderRecord
 } from '@/lib/mock-data';
@@ -74,6 +74,9 @@ const AdminDashboard = () => {
     },
     initialData: initialOrders,
   });
+
+  // Settings State
+  const [gstRate, setGstRate] = useState<number>(getStoredTaxRate());
 
   // Staff State
   const [staffList, setStaffList] = useState<StaffMember[]>(initialStaff);
@@ -680,17 +683,71 @@ const AdminDashboard = () => {
               <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                 <SettingsIcon className="w-6 h-6 text-primary" /> Tuck Shop Settings
               </h1>
-              <p className="text-muted-foreground text-sm">Configure store information and receipt header.</p>
+              <p className="text-muted-foreground text-sm">Configure GST tax rate, store information, and receipt details.</p>
             </div>
-            <div className="bg-card rounded-2xl border p-6 space-y-4 max-w-xl">
-              <div>
-                <label className="block text-xs font-bold text-muted-foreground mb-1">Store Name</label>
-                <input type="text" defaultValue={initialSettings.shopName} className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm font-semibold" />
+
+            <div className="bg-card rounded-2xl border p-6 space-y-6 max-w-xl shadow-sm">
+              {/* GST Rate Config */}
+              <div className="space-y-3">
+                <label className="block text-sm font-bold text-foreground">
+                  GST Tax Rate (%) — Configurable
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Enter the GST percentage applied on checkout (0% for tax-free, 18% standard GST, etc.).
+                </p>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    value={gstRate}
+                    onChange={e => setGstRate(Number(e.target.value))}
+                    placeholder="Enter GST %..."
+                    className="w-32 h-11 px-4 text-center font-bold text-lg rounded-xl border bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    min="0"
+                    max="100"
+                  />
+                  <span className="font-bold text-lg text-primary">% GST</span>
+                </div>
+
+                {/* Preset Tax Rate Buttons */}
+                <div className="flex gap-2 pt-1">
+                  {[0, 5, 17, 18].map(rate => (
+                    <button
+                      key={rate}
+                      type="button"
+                      onClick={() => setGstRate(rate)}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                        gstRate === rate
+                          ? 'bg-primary text-primary-foreground border-primary shadow-soft'
+                          : 'bg-muted/50 border-transparent hover:border-primary/30 text-muted-foreground'
+                      }`}
+                    >
+                      {rate === 0 ? '0% (Tax Free)' : `${rate}% GST`}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-muted-foreground mb-1">Receipt Footer Line</label>
-                <input type="text" defaultValue={initialSettings.receiptFooter} className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm" />
+
+              <div className="border-t pt-4 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground mb-1">Store Name</label>
+                  <input type="text" defaultValue={initialSettings.shopName} className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm font-semibold" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground mb-1">Receipt Footer Line</label>
+                  <input type="text" defaultValue={initialSettings.receiptFooter} className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm" />
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStoredTaxRate(gstRate);
+                  toast.success(`Settings saved! GST rate updated to ${gstRate}%.`);
+                }}
+                className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm shadow-soft hover:opacity-90 transition-opacity"
+              >
+                Save Settings
+              </button>
             </div>
           </div>
         )}

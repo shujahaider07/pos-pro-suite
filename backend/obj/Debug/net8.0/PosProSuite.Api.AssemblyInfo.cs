@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PosProSuite.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0accf88734209d55172d4ff6ec64ed6fd0ebb348")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+55ec6ae5e014bdd408140f4a6a305c9b34419b12")]
 [assembly: System.Reflection.AssemblyProductAttribute("PosProSuite.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PosProSuite.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus, RotateCcw, X } from 'lucide-react';
-import { initialProducts, initialCategories, type CartItem, type Product, type Category } from '@/lib/mock-data';
+import { initialProducts, initialCategories, getStoredTaxRate, type CartItem, type Product, type Category } from '@/lib/mock-data';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ProductCard from '@/components/pos/ProductCard';
 import PaymentModal from '@/components/pos/PaymentModal';
@@ -23,12 +23,43 @@ const OrderScreen = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [receiptItems, setReceiptItems] = useState<CartItem[]>([]);
   const [showRecentSalesModal, setShowRecentSalesModal] = useState(false);
   const [selectedReturnOrder, setSelectedReturnOrder] = useState<any | null>(null);
   const [lastOrderNumber, setLastOrderNumber] = useState('');
   const [lastPaymentMethod, setLastPaymentMethod] = useState<'Cash' | 'Digital'>('Cash');
   const [lastCashReceived, setLastCashReceived] = useState<number | undefined>(undefined);
-  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+  // Custom Item Modal State
+  const [showCustomItemModal, setShowCustomItemModal] = useState(false);
+  const [customItemName, setCustomItemName] = useState('');
+  const [customItemPrice, setCustomItemPrice] = useState('');
+
+  // Order Return Search State
+  const [returnOrderSearch, setReturnOrderSearch] = useState('');
+
+  const handleAddCustomItem = () => {
+    const price = Number(customItemPrice);
+    if (!customItemName.trim() || isNaN(price) || price <= 0) {
+      toast.error('Please enter a valid item name and price.');
+      return;
+    }
+
+    const customProduct: Product = {
+      id: -Date.now(),
+      name: customItemName.trim(),
+      price: price,
+      category: 'all',
+      image: '🏷️',
+      available: true,
+      stockQuantity: 999,
+    };
+
+    setCartItems(prev => [...prev, { product: customProduct, quantity: 1 }]);
+    setShowCustomItemModal(false);
+    setCustomItemName('');
+    setCustomItemPrice('');
+    toast.success(`Added open item: ${customProduct.name} (Rs ${price})`);
+  };
 
   // Fetch recent orders for return lookup
   const { data: recentOrders = [] } = useQuery({
@@ -43,6 +74,15 @@ const OrderScreen = () => {
       }
     },
   });
+
+  const filteredReturnOrders = useMemo(() => {
+    if (!returnOrderSearch.trim()) return recentOrders;
+    const q = returnOrderSearch.toLowerCase().trim();
+    return recentOrders.filter((ord: any) =>
+      (ord.orderNumber && ord.orderNumber.toLowerCase().includes(q)) ||
+      (ord.id && ord.id.toString().includes(q))
+    );
+  }, [recentOrders, returnOrderSearch]);
 
   // Focus search input on mount so barcode scanner works immediately
   useEffect(() => {
@@ -178,8 +218,10 @@ const OrderScreen = () => {
           body: JSON.stringify({
             paymentMethod,
             items: cartItems.map(item => ({
-              productId: item.product.id,
+              productId: item.product.id > 0 ? item.product.id : 0,
               quantity: item.quantity,
+              customName: item.product.id < 0 ? item.product.name : null,
+              customPrice: item.product.id < 0 ? item.product.price : null,
             })),
           }),
         });
@@ -219,6 +261,8 @@ const OrderScreen = () => {
   const handlePaymentSuccess = (method: 'Cash' | 'Digital', cashReceived?: number) => {
     setLastPaymentMethod(method);
     setLastCashReceived(cashReceived);
+    setReceiptItems([...cartItems]);
+
     if (currentOrderId) {
       completeOrderMutation.mutate(currentOrderId);
     }
@@ -234,7 +278,10 @@ const OrderScreen = () => {
     searchInputRef.current?.focus();
   };
 
+  const taxRate = getStoredTaxRate();
   const subtotal = cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const taxAmount = Math.round((subtotal * taxRate) / 100);
+  const grandTotal = subtotal + taxAmount;
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -272,6 +319,15 @@ const OrderScreen = () => {
               className="w-full h-11 pl-10 pr-4 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
             />
           </div>
+
+          {/* Custom Open Item Sale Button */}
+          <button
+            onClick={() => setShowCustomItemModal(true)}
+            className="px-3.5 h-11 rounded-xl gradient-primary text-primary-foreground text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shadow-soft hover:opacity-95"
+            title="Sell item without barcode / unlisted item"
+          >
+            <Plus className="w-4 h-4" /> Custom Item
+          </button>
 
           {/* Quick Returns Button */}
           <button
@@ -420,16 +476,28 @@ const OrderScreen = () => {
 
         {/* Footer & Payment Action */}
         {cartItems.length > 0 && (
-          <div className="border-t p-5 space-y-4">
-            <div className="flex justify-between items-center font-bold text-xl">
-              <span>Total</span>
-              <span className="text-gradient-primary">Rs {subtotal.toLocaleString()}</span>
+          <div className="border-t p-5 space-y-3">
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Subtotal</span>
+                <span>Rs {subtotal.toLocaleString()}</span>
+              </div>
+              {taxRate > 0 && (
+                <div className="flex justify-between text-muted-foreground font-medium">
+                  <span>GST Tax ({taxRate}%)</span>
+                  <span>Rs {taxAmount.toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-between items-center font-bold text-xl border-t pt-2">
+              <span>Grand Total</span>
+              <span className="text-gradient-primary">Rs {grandTotal.toLocaleString()}</span>
             </div>
             <button
               onClick={handleProceedPayment}
               className="w-full h-13 rounded-xl gradient-primary text-primary-foreground font-bold text-base shadow-elevated hover:shadow-float transition-all flex items-center justify-center gap-2"
             >
-              💳 Collect Payment (Rs {subtotal})
+              💳 Collect Payment (Rs {grandTotal.toLocaleString()})
             </button>
           </div>
         )}
@@ -438,7 +506,7 @@ const OrderScreen = () => {
       {/* Payment Modal */}
       {showPayment && (
         <PaymentModal
-          total={subtotal}
+          total={grandTotal}
           onClose={() => setShowPayment(false)}
           onComplete={handlePaymentSuccess}
         />
@@ -448,9 +516,10 @@ const OrderScreen = () => {
       {showReceipt && (
         <TuckShopReceipt
           orderNumber={lastOrderNumber || `TK-${Date.now().toString().slice(-4)}`}
-          items={cartItems}
+          items={receiptItems.length > 0 ? receiptItems : cartItems}
           paymentMethod={lastPaymentMethod}
           cashReceived={lastCashReceived}
+          taxRate={taxRate}
           onClose={() => {
             setShowReceipt(false);
             handleClearOrder();
@@ -470,11 +539,27 @@ const OrderScreen = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="max-h-80 overflow-y-auto pos-scrollbar space-y-2">
-              {recentOrders.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No recent orders found</p>
+
+            {/* Receipt Number Search Box */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                value={returnOrderSearch}
+                onChange={e => setReturnOrderSearch(e.target.value)}
+                placeholder="Type or scan Receipt No (e.g. TK-1001)..."
+                className="w-full h-10 pl-9 pr-4 rounded-xl border bg-muted/40 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+                autoFocus
+              />
+            </div>
+
+            <div className="max-h-72 overflow-y-auto pos-scrollbar space-y-2">
+              {filteredReturnOrders.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-8">
+                  No matching order found for "{returnOrderSearch}"
+                </p>
               ) : (
-                recentOrders.map((ord: any) => (
+                filteredReturnOrders.map((ord: any) => (
                   <div
                     key={ord.id}
                     onClick={() => {
@@ -490,7 +575,7 @@ const OrderScreen = () => {
                     }`}
                   >
                     <div>
-                      <p className="font-bold">{ord.orderNumber}</p>
+                      <p className="font-bold text-base">{ord.orderNumber}</p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(ord.createdAt).toLocaleTimeString()} • {ord.paymentMethod}
                       </p>
@@ -505,6 +590,51 @@ const OrderScreen = () => {
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Open Item Modal */}
+      {showCustomItemModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-sm border shadow-float space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                🏷️ Add Custom / Unlisted Item
+              </h3>
+              <button onClick={() => setShowCustomItemModal(false)} className="p-1 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs font-semibold">
+              <div>
+                <label className="block text-muted-foreground mb-1">Item Name</label>
+                <input
+                  type="text"
+                  value={customItemName}
+                  onChange={e => setCustomItemName(e.target.value)}
+                  placeholder="e.g. Special Biscuit / Unlisted Item"
+                  className="w-full h-11 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Price (Rs)</label>
+                <input
+                  type="number"
+                  value={customItemPrice}
+                  onChange={e => setCustomItemPrice(e.target.value)}
+                  placeholder="Enter price..."
+                  className="w-full h-11 px-3 rounded-xl border bg-muted/40 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleAddCustomItem}
+              className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity"
+            >
+              Add to Cart
+            </button>
           </div>
         </div>
       )}

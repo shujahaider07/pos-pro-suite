@@ -23,14 +23,9 @@ const PaymentModal = ({ total, onClose, onComplete }: PaymentModalProps) => {
   // Quick cash note buttons for Pakistan (PKR / Rs)
   const quickAmounts = [50, 100, 500, 1000, 5000];
 
-  const handleConfirm = async () => {
+  const handleConfirm = () => {
     setIsProcessing(true);
-    await new Promise(r => setTimeout(r, 600));
-    setIsProcessing(false);
-    setIsComplete(true);
-    setTimeout(() => {
-      onComplete(method, method === 'Cash' ? received : undefined);
-    }, 800);
+    onComplete(method, method === 'Cash' ? received : undefined);
   };
 
   const methods = [

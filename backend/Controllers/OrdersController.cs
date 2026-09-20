@@ -5,7 +5,7 @@ using PosProSuite.Api.Models;
 
 namespace PosProSuite.Api.Controllers;
 
-public record OrderItemRequest(int ProductId, int Quantity);
+public record OrderItemRequest(int ProductId, int Quantity, string? CustomName = null, decimal? CustomPrice = null);
 public record CreateOrderRequest(IReadOnlyCollection<OrderItemRequest> Items, string? PaymentMethod = "Cash");
 
 public record ReturnItemRequest(int ProductId, int ReturnQuantity);
@@ -58,13 +58,14 @@ public class OrdersController : ControllerBase
         if (request.Items == null || !request.Items.Any())
             return BadRequest("Order must have at least one item.");
 
-        var productIds = request.Items.Select(i => i.ProductId).ToArray();
-        var products = await _context.Products
-            .Where(p => productIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id);
+        var existingProductIds = request.Items
+            .Where(i => i.ProductId > 0 && i.CustomPrice == null)
+            .Select(i => i.ProductId)
+            .ToArray();
 
-        if (products.Count != productIds.Length)
-            return BadRequest("One or more products were not found.");
+        var products = await _context.Products
+            .Where(p => existingProductIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id);
 
         var order = new OrderEntity
         {
@@ -76,13 +77,38 @@ public class OrdersController : ControllerBase
 
         foreach (var item in request.Items)
         {
-            var product = products[item.ProductId];
-            order.Items.Add(new OrderItemEntity
+            if (item.ProductId > 0 && products.TryGetValue(item.ProductId, out var existingProd) && item.CustomPrice == null)
             {
-                ProductId = product.Id,
-                Quantity = item.Quantity,
-                UnitPrice = product.Price
-            });
+                order.Items.Add(new OrderItemEntity
+                {
+                    ProductId = existingProd.Id,
+                    Quantity = item.Quantity,
+                    UnitPrice = existingProd.Price
+                });
+            }
+            else
+            {
+                // Custom Open Item sale — auto-create product entry for reporting
+                var customProd = new ProductEntity
+                {
+                    Name = !string.IsNullOrWhiteSpace(item.CustomName) ? item.CustomName : "Custom Open Item",
+                    Price = item.CustomPrice ?? 50,
+                    CategoryId = "all",
+                    Subcategory = "Custom",
+                    Image = "🏷️",
+                    Available = true,
+                    StockQuantity = 999
+                };
+                _context.Products.Add(customProd);
+                await _context.SaveChangesAsync();
+
+                order.Items.Add(new OrderItemEntity
+                {
+                    ProductId = customProd.Id,
+                    Quantity = item.Quantity,
+                    UnitPrice = customProd.Price
+                });
+            }
         }
 
         order.TotalAmount = order.Items.Sum(i => i.UnitPrice * i.Quantity);
@@ -111,7 +137,7 @@ public class OrdersController : ControllerBase
         foreach (var item in order.Items)
         {
             var product = await _context.Products.FindAsync(item.ProductId);
-            if (product != null)
+            if (product != null && product.Subcategory != "Custom")
             {
                 product.StockQuantity = Math.Max(0, product.StockQuantity - item.Quantity);
                 if (product.StockQuantity == 0)
@@ -127,7 +153,9 @@ public class OrdersController : ControllerBase
             }
         }
 
-        _context.StockLogs.AddRange(stockLogs);
+        if (stockLogs.Count > 0)
+            _context.StockLogs.AddRange(stockLogs);
+
         await _context.SaveChangesAsync();
 
         return NoContent();
@@ -165,7 +193,7 @@ public class OrdersController : ControllerBase
 
             // Restore stock back to product inventory
             var product = await _context.Products.FindAsync(retItem.ProductId);
-            if (product != null)
+            if (product != null && product.Subcategory != "Custom")
             {
                 product.StockQuantity += qtyToReturn;
                 product.Available = true;
@@ -173,7 +201,7 @@ public class OrdersController : ControllerBase
                 stockLogs.Add(new StockLogEntity
                 {
                     ProductId = retItem.ProductId,
-                    QuantityChange = qtyToReturn, // +ve stock restoration
+                    QuantityChange = qtyToReturn,
                     Reason = $"Return (Order #{order.OrderNumber})",
                     CreatedAt = DateTime.UtcNow
                 });
@@ -191,7 +219,9 @@ public class OrdersController : ControllerBase
             order.Status = "Partially Returned";
         }
 
-        _context.StockLogs.AddRange(stockLogs);
+        if (stockLogs.Count > 0)
+            _context.StockLogs.AddRange(stockLogs);
+
         await _context.SaveChangesAsync();
 
         return Ok(new

@@ -1,21 +1,32 @@
 import { useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Printer } from 'lucide-react';
-import type { CartItem } from '@/lib/mock-data';
+import { X, Printer, CheckCircle2 } from 'lucide-react';
+import { getStoredTaxRate, type CartItem } from '@/lib/mock-data';
 
 interface TuckShopReceiptProps {
   orderNumber: string;
   items: CartItem[];
   paymentMethod: 'Cash' | 'Digital';
   cashReceived?: number;
+  taxRate?: number;
   onClose: () => void;
 }
 
-const TuckShopReceipt = ({ orderNumber, items, paymentMethod, cashReceived, onClose }: TuckShopReceiptProps) => {
+const TuckShopReceipt = ({
+  orderNumber,
+  items,
+  paymentMethod,
+  cashReceived,
+  taxRate = getStoredTaxRate(),
+  onClose,
+}: TuckShopReceiptProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
 
   const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
-  const change = cashReceived ? cashReceived - subtotal : 0;
+  const taxAmount = Math.round((subtotal * taxRate) / 100);
+  const grandTotal = subtotal + taxAmount;
+  const change = cashReceived ? cashReceived - grandTotal : 0;
+
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' });
   const timeStr = now.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
@@ -63,11 +74,15 @@ const TuckShopReceipt = ({ orderNumber, items, paymentMethod, cashReceived, onCl
         className="bg-card rounded-2xl shadow-float w-full max-w-sm mx-4 overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b">
-          <h3 className="font-bold text-lg flex items-center gap-2">
-            <Printer className="w-5 h-5 text-primary" /> Receipt
-          </h3>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors">
+        <div className="flex items-center justify-between p-4 border-b bg-emerald-500/10">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            <div>
+              <h3 className="font-bold text-sm text-emerald-700">Payment Successful!</h3>
+              <p className="text-[10px] text-emerald-600/80 font-mono">Order {orderNumber}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-800 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -88,7 +103,7 @@ const TuckShopReceipt = ({ orderNumber, items, paymentMethod, cashReceived, onCl
 
             {/* Items */}
             {items.map((item) => (
-              <div key={item.product.id} className="row" style={{ display: 'flex', justifyContent: 'space-between', margin: '3px 0' }}>
+              <div key={item.product.id} className="row" style={{ display: 'flex', justify: 'space-between', margin: '3px 0' }}>
                 <span style={{ flex: 1 }}>{item.product.name}</span>
                 <span style={{ marginLeft: 8 }}>{item.quantity}x</span>
                 <span style={{ marginLeft: 8, textAlign: 'right', minWidth: 50 }}>Rs {item.product.price * item.quantity}</span>
@@ -97,26 +112,41 @@ const TuckShopReceipt = ({ orderNumber, items, paymentMethod, cashReceived, onCl
 
             <div className="line" style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
 
-            {/* Total */}
-            <div className="row total-row" style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: 13 }}>
-              <span>TOTAL</span>
+            {/* Tax breakdown */}
+            <div className="row" style={{ display: 'flex', justify: 'space-between', margin: '3px 0' }}>
+              <span>Subtotal</span>
               <span>Rs {subtotal}</span>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', margin: '3px 0', fontSize: 11 }}>
+            {taxRate > 0 && (
+              <div className="row" style={{ display: 'flex', justify: 'space-between', margin: '3px 0' }}>
+                <span>GST Tax ({taxRate}%)</span>
+                <span>Rs {taxAmount}</span>
+              </div>
+            )}
+
+            {/* Total */}
+            <div className="row total-row" style={{ display: 'flex', justify: 'space-between', fontWeight: 'bold', fontSize: 14, marginTop: 4 }}>
+              <span>GRAND TOTAL</span>
+              <span>Rs {grandTotal}</span>
+            </div>
+
+            <div className="line" style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
+
+            <div style={{ display: 'flex', justify: 'space-between', margin: '3px 0', fontSize: 11 }}>
               <span>Payment</span>
               <span>{paymentMethod}</span>
             </div>
 
             {paymentMethod === 'Cash' && cashReceived && cashReceived > 0 && (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', margin: '3px 0', fontSize: 11 }}>
+                <div style={{ display: 'flex', justify: 'space-between', margin: '3px 0', fontSize: 11 }}>
                   <span>Cash Received</span>
                   <span>Rs {cashReceived}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', margin: '3px 0', fontSize: 11, color: '#16a34a', fontWeight: 'bold' }}>
+                <div style={{ display: 'flex', justify: 'space-between', margin: '3px 0', fontSize: 11, color: '#16a34a', fontWeight: 'bold' }}>
                   <span>Change</span>
-                  <span>Rs {change}</span>
+                  <span>Rs {change >= 0 ? change : 0}</span>
                 </div>
               </>
             )}

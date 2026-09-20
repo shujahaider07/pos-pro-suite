@@ -142,6 +142,20 @@ export const initialOrders: OrderRecord[] = [
   },
 ];
 
+export const getStoredTaxRate = (): number => {
+  try {
+    const stored = localStorage.getItem('tuckshop_gst_rate');
+    if (stored !== null) return Number(stored);
+  } catch {}
+  return 18; // Default 18% GST (configurable)
+};
+
+export const setStoredTaxRate = (rate: number) => {
+  try {
+    localStorage.setItem('tuckshop_gst_rate', String(rate));
+  } catch {}
+};
+
 export const initialSettings: TuckShopSettings = {
   shopName: 'TuckShop POS',
   tagline: 'Quick & Easy Counter Sales',
@@ -150,7 +164,7 @@ export const initialSettings: TuckShopSettings = {
   address: 'School Campus, Block A',
   currency: 'PKR',
   currencySymbol: 'Rs',
-  taxRate: 0,
+  taxRate: getStoredTaxRate(),
   lowStockThreshold: 5,
   receiptFooter: 'Thank you for your purchase!',
 };

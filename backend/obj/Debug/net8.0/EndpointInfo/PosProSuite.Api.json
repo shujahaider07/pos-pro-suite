@@ -533,6 +533,15 @@
           "quantity": {
             "type": "integer",
             "format": "int32"
+          },
+          "customName": {
+            "type": "string",
+            "nullable": true
+          },
+          "customPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
           }
         },
         "additionalProperties": false
