@@ -40,7 +40,9 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
 app.UseCors("AllowAll");
+
 // =====================================================
 // Database Seeder
 // =====================================================
@@ -66,7 +68,6 @@ app.UseSwaggerUI();
 
 app.Lifetime.ApplicationStarted.Register(() =>
 {
-    // Get the actual URL where the API is running
     var url = app.Urls.FirstOrDefault();
 
     if (!string.IsNullOrEmpty(url))
@@ -84,19 +85,13 @@ app.Lifetime.ApplicationStarted.Register(() =>
 });
 
 // =====================================================
-// HTTPS
+// HTTPS redirection
 // =====================================================
 
 //if (!app.Environment.IsDevelopment())
 //{
     app.UseHttpsRedirection();
 //}
-
-// =====================================================
-// CORS
-// =====================================================
-
-app.UseCors();
 
 // =====================================================
 // Controllers

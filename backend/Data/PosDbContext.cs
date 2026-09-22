@@ -16,6 +16,7 @@ public class PosDbContext : DbContext
     public DbSet<OrderItemEntity> OrderItems => Set<OrderItemEntity>();
     public DbSet<StockLogEntity> StockLogs => Set<StockLogEntity>();
     public DbSet<UserEntity> Users => Set<UserEntity>();
+    public DbSet<SettingsEntity> Settings => Set<SettingsEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

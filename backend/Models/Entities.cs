@@ -73,3 +73,19 @@ public class UserEntity
     public string PasswordHash { get; set; } = string.Empty;
     public string Role { get; set; } = "employee";
 }
+
+public class SettingsEntity
+{
+    public int Id { get; set; }
+    public string ShopName { get; set; } = "TuckShop POS";
+    public string Tagline { get; set; } = "Quick & Easy Counter Sales";
+    public string Phone { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Address { get; set; } = string.Empty;
+    public string Currency { get; set; } = "PKR";
+    public string CurrencySymbol { get; set; } = "Rs";
+    public decimal GstRate { get; set; } = 18;
+    public int LowStockThreshold { get; set; } = 5;
+    public string ReceiptFooter { get; set; } = "Thank you for your purchase!";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}

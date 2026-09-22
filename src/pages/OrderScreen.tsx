@@ -740,6 +740,7 @@ const OrderScreen = () => {
       {selectedReturnOrder && (
         <ReturnModal
           order={selectedReturnOrder}
+          cashierName={userName || 'Staff'}
           onClose={() => {
             setSelectedReturnOrder(null);
             focusSearchInput();

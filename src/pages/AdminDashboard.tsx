@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AdminSidebar from '@/components/pos/AdminSidebar';
 import ReturnModal from '@/components/pos/ReturnModal';
 import { RotateCcw } from 'lucide-react';
+import { useAuth } from '@/lib/pos-context';
 import {
   dashboardStats as mockStats, initialProducts, initialCategories,
   initialStaff, initialOrders, initialSettings, getStoredTaxRate, setStoredTaxRate,
@@ -30,6 +31,7 @@ const AdminDashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { userName } = useAuth();
 
   // Products State
   const [productsList, setProductsList] = useState<Product[]>(initialProducts);
@@ -1001,6 +1003,7 @@ const AdminDashboard = () => {
       {selectedReturnOrder && (
         <ReturnModal
           order={selectedReturnOrder}
+          cashierName={userName || 'Admin'}
           onClose={() => setSelectedReturnOrder(null)}
           onReturnSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['orders'] });

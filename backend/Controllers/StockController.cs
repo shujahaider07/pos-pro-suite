@@ -6,6 +6,7 @@ using PosProSuite.Api.Models;
 namespace PosProSuite.Api.Controllers;
 
 public record AddStockRequest(int Quantity, string? Reason = "StockIn");
+public record AddStockRequestV2(int ProductId, int QuantityToAdd, string? Reason = "StockIn");
 
 [ApiController]
 [Route("api/[controller]")]
@@ -54,7 +55,33 @@ public class StockController : ControllerBase
         return Ok(products);
     }
 
-    /// <summary>Add stock to a product (when new stock arrives)</summary>
+    /// <summary>Add stock to a product (productId in body — used by frontend AdminDashboard)</summary>
+    [HttpPost("add")]
+    public async Task<ActionResult> AddStockV2([FromBody] AddStockRequestV2 request)
+    {
+        if (request.QuantityToAdd <= 0)
+            return BadRequest("QuantityToAdd must be greater than 0.");
+
+        var product = await _context.Products.FindAsync(request.ProductId);
+        if (product == null) return NotFound($"Product with id {request.ProductId} not found.");
+
+        product.StockQuantity += request.QuantityToAdd;
+        if (product.StockQuantity > 0)
+            product.Available = true;
+
+        _context.StockLogs.Add(new StockLogEntity
+        {
+            ProductId = request.ProductId,
+            QuantityChange = request.QuantityToAdd,
+            Reason = string.IsNullOrWhiteSpace(request.Reason) ? "StockIn" : request.Reason,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        await _context.SaveChangesAsync();
+        return Ok(new { product.Id, product.Name, product.StockQuantity });
+    }
+
+    /// <summary>Add stock to a product (productId in URL route)</summary>
     [HttpPost("{id:int}/add")]
     public async Task<ActionResult> AddStock(int id, [FromBody] AddStockRequest request)
     {
