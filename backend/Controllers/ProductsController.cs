@@ -57,6 +57,27 @@ public class ProductsController : ControllerBase
         return CreatedAtAction(nameof(GetProducts), new { id = product.Id }, product);
     }
 
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult<ProductEntity>> UpdateProduct(int id, [FromBody] ProductEntity product)
+    {
+        if (product == null) return BadRequest();
+
+        if (product.Id != 0 && product.Id != id)
+            return BadRequest("Product ID in body does not match URL ID.");
+
+        var existing = await _context.Products.FindAsync(id);
+        if (existing == null) return NotFound();
+
+        // Ensure the incoming entity has the correct ID
+        product.Id = id;
+
+        // Copy values from incoming product to the tracked entity
+        _context.Entry(existing).CurrentValues.SetValues(product);
+
+        await _context.SaveChangesAsync();
+        return Ok(product);
+    }
+
     [HttpPatch("{id:int}/stock")]
     public async Task<ActionResult> ToggleStock(int id)
     {

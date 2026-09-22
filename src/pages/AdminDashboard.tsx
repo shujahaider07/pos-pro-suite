@@ -5,7 +5,7 @@ import {
   TrendingUp, DollarSign, ShoppingBag, BarChart3,
   Plus, Search, Trash2, X, Users,
   FolderTree, FileText, Settings as SettingsIcon,
-  Boxes, AlertTriangle, ArrowUpRight, History, UserCheck, Filter, Printer, Download
+  Boxes, AlertTriangle, ArrowUpRight, History, UserCheck, Filter, Printer, Download, Tag
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -14,8 +14,10 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AdminSidebar from '@/components/pos/AdminSidebar';
 import ReturnModal from '@/components/pos/ReturnModal';
+import BarcodeLabelPrintModal from '@/components/pos/BarcodeLabelPrintModal';
 import { RotateCcw } from 'lucide-react';
 import { useAuth } from '@/lib/pos-context';
+import { generateBarcode } from '@/lib/barcode';
 import {
   dashboardStats as mockStats, initialProducts, initialCategories,
   initialStaff, initialOrders, initialSettings, getStoredTaxRate, setStoredTaxRate,
@@ -61,6 +63,9 @@ const AdminDashboard = () => {
 
   // Return Modal State
   const [selectedReturnOrder, setSelectedReturnOrder] = useState<any | null>(null);
+
+  // Barcode Label Print Modal
+  const [labelProduct, setLabelProduct] = useState<Product | null>(null);
 
   // Cashier Filter for Sales & Performance
   const [selectedCashierFilter, setSelectedCashierFilter] = useState<string>('all');
@@ -220,20 +225,35 @@ const AdminDashboard = () => {
       toast.error('Please provide a valid product name and price.');
       return;
     }
+    // Auto-generate a valid barcode if none entered
+    const finalProduct = {
+      ...newProduct,
+      barcode: newProduct.barcode?.trim() || generateBarcode(Date.now()),
+    };
     try {
       const res = await fetch(`${API_BASE_URL}/api/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProduct),
+        body: JSON.stringify(finalProduct),
       });
       if (res.ok) {
-        toast.success(`Product "${newProduct.name}" created successfully!`);
+        const created: Product = await res.json().catch(() => null);
+        toast.success(`Product "${finalProduct.name}" created with barcode ${finalProduct.barcode}`);
         queryClient.invalidateQueries({ queryKey: ['products'] });
         queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        // Offer to print labels for the new stock
+        const forLabel = created || { ...finalProduct, id: Date.now() };
+        if ((finalProduct.stockQuantity || 0) > 0) {
+          setLabelProduct(forLabel);
+        }
       }
     } catch {
-      setProductsList(prev => [...prev, { ...newProduct, id: Date.now() }]);
-      toast.success('Product saved locally');
+      const created = { ...finalProduct, id: Date.now() };
+      setProductsList(prev => [...prev, created]);
+      toast.success(`Product saved locally • Barcode: ${created.barcode}`);
+      if ((finalProduct.stockQuantity || 0) > 0) {
+        setLabelProduct(created);
+      }
     }
     setShowAddProductModal(false);
     setNewProduct({ name: '', price: 50, category: 'snacks', subcategory: 'Chips', image: '📦', available: true, stockQuantity: 50, barcode: '' });
@@ -546,6 +566,13 @@ const AdminDashboard = () => {
                       className="flex-1 py-2 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" /> Add Stock
+                    </button>
+                    <button
+                      onClick={() => setLabelProduct(p)}
+                      title="Print barcode price labels for this product"
+                      className="py-2 px-3 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
+                    >
+                      <Tag className="w-3.5 h-3.5" /> Labels
                     </button>
                   </div>
                 </div>
@@ -956,7 +983,20 @@ const AdminDashboard = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-muted-foreground mb-1">Barcode (Optional)</label>
+                <label className="block text-muted-foreground mb-1 flex justify-between items-center">
+                  <span>Barcode (Optional — auto-generated if blank)</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = generateBarcode(Date.now());
+                      setNewProduct(p => ({ ...p, barcode: next }));
+                      toast.success(`Barcode ${next} auto-generated`);
+                    }}
+                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    ⚡ Auto-Generate
+                  </button>
+                </label>
                 <input
                   type="text"
                   value={newProduct.barcode}
@@ -1012,6 +1052,14 @@ const AdminDashboard = () => {
             queryClient.invalidateQueries({ queryKey: ['dashboard'] });
             queryClient.invalidateQueries({ queryKey: ['stock-logs'] });
           }}
+        />
+      )}
+
+      {/* BARCODE LABEL PRINT MODAL */}
+      {labelProduct && (
+        <BarcodeLabelPrintModal
+          product={labelProduct}
+          onClose={() => setLabelProduct(null)}
         />
       )}
     </AdminSidebar>
