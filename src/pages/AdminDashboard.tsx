@@ -5,7 +5,7 @@ import {
   TrendingUp, DollarSign, ShoppingBag, BarChart3,
   Plus, Search, Trash2, X, Users,
   FolderTree, FileText, Settings as SettingsIcon,
-  Boxes, AlertTriangle, ArrowUpRight, History, UserCheck, Filter, Printer, Download, Tag
+  Boxes, AlertTriangle, ArrowUpRight, History, UserCheck, Filter, Printer, Download, Tag, Edit, Save
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -51,6 +51,10 @@ const AdminDashboard = () => {
     barcode: '',
   });
 
+  // Edit Product State
+  const [showEditProductModal, setShowEditProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+
   // Stock Management Modal
   const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [selectedStockProduct, setSelectedStockProduct] = useState<Product | null>(null);
@@ -60,6 +64,10 @@ const AdminDashboard = () => {
   const [categoriesList, setCategoriesList] = useState<Category[]>(initialCategories);
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
   const [newCategory, setNewCategory] = useState({ id: '', name: '', icon: '🏪', subcategories: '' });
+
+  // Edit Category State
+  const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
   // Return Modal State
   const [selectedReturnOrder, setSelectedReturnOrder] = useState<any | null>(null);
@@ -259,6 +267,34 @@ const AdminDashboard = () => {
     setNewProduct({ name: '', price: 50, category: 'snacks', subcategory: 'Chips', image: '📦', available: true, stockQuantity: 50, barcode: '' });
   };
 
+  const handleUpdateProduct = async () => {
+    if (!editingProduct) return;
+    if (!editingProduct.name.trim() || editingProduct.price <= 0) {
+      toast.error('Please provide a valid product name and price.');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products/${editingProduct.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingProduct),
+      });
+      if (res.ok) {
+        const updated: Product = await res.json().catch(() => null);
+        toast.success(`Product "${editingProduct.name}" updated successfully`);
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      }
+    } catch {
+      setProductsList(prev =>
+        prev.map(p => (p.id === editingProduct.id ? { ...editingProduct } : p))
+      );
+      toast.success('Product updated locally');
+    }
+    setShowEditProductModal(false);
+    setEditingProduct(null);
+  };
+
   const handleCreateCategory = async () => {
     if (!newCategory.name.trim()) {
       toast.error('Please provide a category name.');
@@ -282,6 +318,36 @@ const AdminDashboard = () => {
     }
     setShowAddCategoryModal(false);
     setNewCategory({ id: '', name: '', icon: '🏪', subcategories: '' });
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!editingCategory) return;
+    if (!editingCategory.name.trim()) {
+      toast.error('Please provide a category name.');
+      return;
+    }
+    const subs = editingCategory.subcategories
+      ? editingCategory.subcategories.join(', ')
+      : '';
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/categories/${editingCategory.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingCategory.name, icon: editingCategory.icon || '🏪', subcategories: subs }),
+      });
+      if (res.ok) {
+        toast.success(`Category "${editingCategory.name}" updated successfully`);
+        queryClient.invalidateQueries({ queryKey: ['categories'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      }
+    } catch {
+      setCategoriesList(prev =>
+        prev.map(c => (c.id === editingCategory.id ? { ...editingCategory } : c))
+      );
+      toast.success('Category updated locally');
+    }
+    setShowEditCategoryModal(false);
+    setEditingCategory(null);
   };
 
   const addStockMutation = useMutation({
@@ -568,6 +634,16 @@ const AdminDashboard = () => {
                       <Plus className="w-3.5 h-3.5" /> Add Stock
                     </button>
                     <button
+                      onClick={() => {
+                        setEditingProduct(p);
+                        setShowEditProductModal(true);
+                      }}
+                      title="Edit product"
+                      className="py-2 px-3 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => setLabelProduct(p)}
                       title="Print barcode price labels for this product"
                       className="py-2 px-3 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
@@ -622,6 +698,17 @@ const AdminDashboard = () => {
                       </div>
                     </div>
                   )}
+
+                  <button
+                    onClick={() => {
+                      setEditingCategory(cat);
+                      setShowEditCategoryModal(true);
+                    }}
+                    title="Edit category"
+                    className="w-full py-2 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Edit className="w-3.5 h-3.5" /> Edit Category
+                  </button>
                 </div>
               ))}
             </div>
@@ -941,6 +1028,58 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {/* EDIT CATEGORY MODAL */}
+      {showEditCategoryModal && editingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md border shadow-float space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-lg">Edit Category</h3>
+              <button onClick={() => { setShowEditCategoryModal(false); setEditingCategory(null); }} className="p-1 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs font-semibold">
+              <div>
+                <label className="block text-muted-foreground mb-1">Category Name</label>
+                <input
+                  type="text"
+                  value={editingCategory.name}
+                  onChange={e => setEditingCategory(c => c ? ({ ...c, name: e.target.value }) : null)}
+                  placeholder="e.g. Beverages"
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Emoji Icon</label>
+                <input
+                  type="text"
+                  value={editingCategory.icon}
+                  onChange={e => setEditingCategory(c => c ? ({ ...c, icon: e.target.value }) : null)}
+                  placeholder="e.g. 🥤"
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none text-center"
+                />
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Subcategories (comma separated)</label>
+                <input
+                  type="text"
+                  value={editingCategory.subcategories ? editingCategory.subcategories.join(', ') : ''}
+                  onChange={e => setEditingCategory(c => c ? ({ ...c, subcategories: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }) : null)}
+                  placeholder="e.g. Cold, Hot, Energy"
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleUpdateCategory}
+              className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity mt-2"
+            >
+              Save Changes
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ADD PRODUCT MODAL */}
       {showAddProductModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
@@ -1034,6 +1173,101 @@ const AdminDashboard = () => {
               className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity mt-2"
             >
               Save Product
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT PRODUCT MODAL */}
+      {showEditProductModal && editingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md border shadow-float space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-lg">Edit Product</h3>
+              <button onClick={() => { setShowEditProductModal(false); setEditingProduct(null); }} className="p-1 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs font-semibold">
+              <div>
+                <label className="block text-muted-foreground mb-1">Product Name</label>
+                <input
+                  type="text"
+                  value={editingProduct.name}
+                  onChange={e => setEditingProduct(p => p ? ({ ...p, name: e.target.value }) : null)}
+                  placeholder="e.g. Lays Masala"
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-muted-foreground mb-1">Price (PKR)</label>
+                  <input
+                    type="number"
+                    value={editingProduct.price}
+                    onChange={e => setEditingProduct(p => p ? ({ ...p, price: Number(e.target.value) }) : null)}
+                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-muted-foreground mb-1">Stock Quantity</label>
+                  <input
+                    type="number"
+                    value={editingProduct.stockQuantity ?? 0}
+                    onChange={e => setEditingProduct(p => p ? ({ ...p, stockQuantity: Number(e.target.value) }) : null)}
+                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Barcode</label>
+                <input
+                  type="text"
+                  value={editingProduct.barcode || ''}
+                  onChange={e => setEditingProduct(p => p ? ({ ...p, barcode: e.target.value }) : null)}
+                  placeholder="Barcode digits..."
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none font-mono"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-muted-foreground mb-1">Category</label>
+                  <select
+                    value={editingProduct.category}
+                    onChange={e => setEditingProduct(p => p ? ({ ...p, category: e.target.value }) : null)}
+                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none capitalize"
+                  >
+                    {categoriesList.filter(c => c.id !== 'all').map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-muted-foreground mb-1">Emoji Icon</label>
+                  <input
+                    type="text"
+                    value={editingProduct.image}
+                    onChange={e => setEditingProduct(p => p ? ({ ...p, image: e.target.value }) : null)}
+                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none text-center"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="edit-available"
+                  checked={editingProduct.available}
+                  onChange={e => setEditingProduct(p => p ? ({ ...p, available: e.target.checked }) : null)}
+                  className="w-4 h-4 rounded border-primary text-primary focus:ring-primary"
+                />
+                <label htmlFor="edit-available" className="text-sm font-medium">Available for Sale</label>
+              </div>
+            </div>
+            <button
+              onClick={handleUpdateProduct}
+              className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity mt-2"
+            >
+              <Save className="w-4 h-4 mr-1" /> Save Changes
             </button>
           </div>
         </div>
