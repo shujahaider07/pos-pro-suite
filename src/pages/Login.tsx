@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Loader2, UtensilsCrossed, ShieldCheck, UserCheck, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/pos-context';
+import { API_BASE_URL } from '@/config/api';
 import loginIllustration from '@/assets/login-illustration.jpg';
 
 const Login = () => {
@@ -16,7 +17,6 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(true);
   const navigate = useNavigate();
   const { login, setIsBackendConnected } = useAuth();
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 
   const handleQuickLogin = (selectedRole: 'admin' | 'employee') => {
     if (selectedRole === 'admin') {
@@ -46,7 +46,9 @@ const Login = () => {
 
     setIsLoading(true);
     try {
+
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        //const response = await fetch('http://tuckshopbackend.runasp.net/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

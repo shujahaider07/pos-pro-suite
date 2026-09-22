@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, RotateCcw, Minus, Plus, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { API_BASE_URL } from '@/config/api';
 
 interface OrderItemInfo {
   productId: number;
@@ -25,8 +26,6 @@ interface ReturnModalProps {
 }
 
 const ReturnModal = ({ order, onClose, onReturnSuccess }: ReturnModalProps) => {
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5001';
-
   // State to track return quantities per product ID
   const [returnQuantities, setReturnQuantities] = useState<Record<number, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -22,6 +22,7 @@ import {
   type OrderRecord
 } from '@/lib/mock-data';
 import { toast } from 'sonner';
+import { API_BASE_URL } from '@/config/api';
 
 const COLORS = ['hsl(234,89%,56%)', 'hsl(152,69%,40%)', 'hsl(38,92%,50%)', 'hsl(0,72%,56%)', 'hsl(280,60%,55%)'];
 
@@ -29,7 +30,6 @@ const AdminDashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5001';
 
   // Products State
   const [productsList, setProductsList] = useState<Product[]>(initialProducts);

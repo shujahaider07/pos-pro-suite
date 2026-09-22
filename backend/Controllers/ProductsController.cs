@@ -34,7 +34,12 @@ public class ProductsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(search))
         {
             var lowered = search.ToLower();
-            query = query.Where(p => p.Name.ToLower().Contains(lowered));
+
+            // Yahan humne Name ke sath-sath Barcode par bhi filter laga diya hai
+            query = query.Where(p =>
+                p.Name.ToLower().Contains(lowered) ||
+                (!string.IsNullOrEmpty(p.Barcode) && p.Barcode.ToLower().Contains(lowered))
+            );
         }
 
         var products = await query

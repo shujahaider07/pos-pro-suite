@@ -3,52 +3,109 @@ using PosProSuite.Api.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// =====================================================
+// Database
+// =====================================================
+
 builder.Services.AddDbContext<PosDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+    ));
+
+// =====================================================
+// Controllers
+// =====================================================
 
 builder.Services.AddControllers();
+
+// =====================================================
+// Swagger
+// =====================================================
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// =====================================================
+// CORS
+// =====================================================
+
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
+    options.AddPolicy("AllowAll", policy =>
     {
-        policy.AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials()
-            .WithOrigins(
-                "http://localhost:5173",
-                "http://localhost:5174",
-                "http://localhost:4173",
-                "http://localhost:8080"
-            );
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
     });
 });
 
 var app = builder.Build();
+app.UseCors("AllowAll");
+// =====================================================
+// Database Seeder
+// =====================================================
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PosDbContext>();
+
     await DbSeeder.SeedAsync(db);
 }
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+// =====================================================
+// Swagger
+// =====================================================
 
-// For local HTTP dev (http://localhost:5000) we do not redirect to HTTPS,
-// so that Vite dev server can call APIs without 307 redirects.
-if (!app.Environment.IsDevelopment())
+app.UseSwagger();
+
+app.UseSwaggerUI();
+
+// =====================================================
+// Automatically Open Swagger
+// =====================================================
+
+app.Lifetime.ApplicationStarted.Register(() =>
 {
+    // Get the actual URL where the API is running
+    var url = app.Urls.FirstOrDefault();
+
+    if (!string.IsNullOrEmpty(url))
+    {
+        var swaggerUrl = $"{url.TrimEnd('/')}/swagger";
+
+        System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = swaggerUrl,
+                UseShellExecute = true
+            }
+        );
+    }
+});
+
+// =====================================================
+// HTTPS
+// =====================================================
+
+//if (!app.Environment.IsDevelopment())
+//{
     app.UseHttpsRedirection();
-}
+//}
+
+// =====================================================
+// CORS
+// =====================================================
 
 app.UseCors();
 
+// =====================================================
+// Controllers
+// =====================================================
+
 app.MapControllers();
+
+// =====================================================
+// Run
+// =====================================================
 
 app.Run();

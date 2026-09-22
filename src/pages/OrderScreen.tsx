@@ -10,14 +10,13 @@ import PaymentModal from '@/components/pos/PaymentModal';
 import TuckShopReceipt from '@/components/pos/TuckShopReceipt';
 import ReturnModal from '@/components/pos/ReturnModal';
 import { toast } from 'sonner';
+import { API_BASE_URL } from '@/config/api';
 
 const OrderScreen = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { userName, role, email } = useAuth();
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5001';
 
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
