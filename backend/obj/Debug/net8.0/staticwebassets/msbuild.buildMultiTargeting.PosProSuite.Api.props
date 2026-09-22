@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\build\PosProSuite.Api.props" />
-</Project>
