@@ -201,6 +201,13 @@ export const dashboardStats = {
     { name: 'Biscuits',   value: 12 },
     { name: 'Stationery', value: 7  },
   ],
+  categorySalesBreakdown: [
+    { name: 'Drinks',     revenue: 44975, unitsSold: 137, orderCount: 82,  share: 35 },
+    { name: 'Snacks',     revenue: 35980, unitsSold: 112, orderCount: 71,  share: 28 },
+    { name: 'Sweets',     revenue: 23130, unitsSold:  95, orderCount: 58,  share: 18 },
+    { name: 'Biscuits',   revenue: 15420, unitsSold:  74, orderCount: 44,  share: 12 },
+    { name: 'Stationery', revenue:  8995, unitsSold:  30, orderCount: 21,  share: 7  },
+  ],
   paymentBreakdown: [
     { method: 'Cash',    count: 95, total: 78000 },
     { method: 'Digital', count: 61, total: 50500 },

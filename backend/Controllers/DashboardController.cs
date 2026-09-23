@@ -16,7 +16,11 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult> GetDashboard([FromQuery] string? cashier = null, [FromQuery] string? role = null)
+    public async Task<ActionResult> GetDashboard(
+        [FromQuery] string? cashier = null,
+        [FromQuery] string? role = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null)
     {
         var now = DateTime.UtcNow;
         var today = now.Date;
@@ -43,6 +47,13 @@ public class DashboardController : ControllerBase
                 (o.CashierEmail != null && o.CashierEmail.ToLower() == normalized));
         }
 
+        // Date range filter — apply to all date-bounded metrics
+        var hasCustomDate = fromDate.HasValue || toDate.HasValue;
+        var dateFrom = fromDate?.Date ?? DateTime.MinValue;
+        var dateTo = toDate?.Date ?? DateTime.MaxValue;
+        if (hasCustomDate)
+            query = query.Where(o => o.CreatedAt.Date >= dateFrom && o.CreatedAt.Date <= dateTo);
+
         var completedOrders = query;
 
         var todayOrders   = completedOrders.Where(o => o.CreatedAt >= today);
@@ -59,8 +70,11 @@ public class DashboardController : ControllerBase
             ? await completedOrders.AverageAsync(o => o.TotalAmount)
             : 0;
 
-        // Cashier sales breakdown (for admin overview)
+        // Cashier sales breakdown — filter by date when custom range is set
         var allOrdersForBreakdown = _context.Orders.AsQueryable();
+        if (hasCustomDate)
+            allOrdersForBreakdown = allOrdersForBreakdown.Where(o => o.CreatedAt.Date >= dateFrom && o.CreatedAt.Date <= dateTo);
+
         var cashierPerformance = await allOrdersForBreakdown
             .GroupBy(o => string.IsNullOrWhiteSpace(o.CashierName) ? "Staff" : o.CashierName)
             .Select(g => new
@@ -73,10 +87,16 @@ public class DashboardController : ControllerBase
             .OrderByDescending(c => c.totalSales)
             .ToListAsync();
 
-        // Top selling items
-        var topItems = await _context.OrderItems
+        // Top selling items — respect date filter
+        var orderItemsBase = _context.OrderItems
             .Include(i => i.Product)
+            .Include(i => i.Order)
             .Where(i => i.Order != null && i.Order.Status == "Completed")
+            .AsQueryable();
+        if (hasCustomDate)
+            orderItemsBase = orderItemsBase.Where(i => i.Order!.CreatedAt.Date >= dateFrom && i.Order!.CreatedAt.Date <= dateTo);
+
+        var topItems = await orderItemsBase
             .GroupBy(i => i.Product!.Name)
             .Select(g => new
             {
@@ -88,25 +108,39 @@ public class DashboardController : ControllerBase
             .Take(5)
             .ToListAsync();
 
-        // Sales trend (last 7 days)
+        // Sales trend (last 7 days or custom range span)
         var salesTrend = await completedOrders
             .GroupBy(o => o.CreatedAt.Date)
             .Select(g => new { day = g.Key, sales = g.Sum(o => o.TotalAmount) })
             .OrderBy(x => x.day)
             .ToListAsync();
 
-        // Category performance
-        var categoryPerformance = await _context.OrderItems
-            .Include(i => i.Product)
-            .Where(i => i.Order != null && i.Order.Status == "Completed")
+        // Category performance — respect date filter, include revenue + units sold
+        var categoryPerformanceRaw = await orderItemsBase
             .GroupBy(i => i.Product!.CategoryId)
-            .Select(g => new { name = g.Key, value = g.Sum(i => i.UnitPrice * i.Quantity) })
+            .Select(g => new
+            {
+                name = g.Key,
+                revenue = g.Sum(i => i.UnitPrice * i.Quantity),
+                unitsSold = g.Sum(i => i.Quantity),
+                orderCount = g.Select(i => i.OrderId).Distinct().Count()
+            })
+            .OrderByDescending(c => c.revenue)
             .ToListAsync();
 
-        var totalCatValue = categoryPerformance.Sum(c => c.value);
-        var categoryPercentages = totalCatValue > 0
-            ? categoryPerformance.Select(c => new { name = c.name, value = Math.Round(c.value * 100 / totalCatValue, 2) })
-            : [];
+        var totalCatRevenue = categoryPerformanceRaw.Sum(c => c.revenue);
+        var categoryPerformanceWithDetails = categoryPerformanceRaw.Select(c => new
+        {
+            name = c.name,
+            revenue = c.revenue,
+            unitsSold = c.unitsSold,
+            orderCount = c.orderCount,
+            share = totalCatRevenue > 0 ? Math.Round(c.revenue * 100 / totalCatRevenue, 2) : 0
+        }).ToList();
+
+        var categoryPercentages = categoryPerformanceWithDetails
+            .Select(c => new { name = c.name, value = c.share })
+            .ToList();
 
         // Payment method breakdown (Cash vs Digital)
         var paymentBreakdown = await completedOrders
@@ -137,6 +171,7 @@ public class DashboardController : ControllerBase
             topItems,
             salesTrend = salesTrend.Select(x => new { day = x.day.ToString("ddd"), sales = x.sales }),
             categoryPerformance = categoryPercentages,
+            categorySalesBreakdown = categoryPerformanceWithDetails,
             paymentBreakdown,
             lowStockCount,
             lowStockItems,

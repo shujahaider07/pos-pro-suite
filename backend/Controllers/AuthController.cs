@@ -26,6 +26,13 @@ public class AuthController : ControllerBase
             return BadRequest("Email and password are required");
         }
 
+        // Admin-only portal: reject any non-admin login attempts at the gate
+        var requestedRole = (request.Role ?? string.Empty).Trim().ToLowerInvariant();
+        if (requestedRole != "admin")
+        {
+            return Unauthorized("Access denied: Only Admin role is allowed to sign in.");
+        }
+
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
         var user = await _context.Users
@@ -45,15 +52,14 @@ public class AuthController : ControllerBase
 
         if (user == null)
         {
-            // Allow admin / staff standard fallback or create user
-            if ((request.Role == "admin" && (normalizedEmail.Contains("admin") || request.Password == "admin123")) ||
-                (request.Role == "employee" && (request.Password == "emp123" || request.Password == "staff123")))
+            // Admin-only fallback — never create employee/staff users
+            if (normalizedEmail.Contains("admin") || request.Password == "admin123")
             {
                 var newUser = new UserEntity
                 {
                     Email = request.Email,
                     PasswordHash = request.Password,
-                    Role = request.Role
+                    Role = "admin"
                 };
                 _context.Users.Add(newUser);
                 await _context.SaveChangesAsync();
@@ -65,7 +71,14 @@ public class AuthController : ControllerBase
                 });
             }
 
-            return Unauthorized("Invalid credentials");
+            return Unauthorized("Invalid admin credentials");
+        }
+
+        // Ensure the matched user is actually an admin before allowing sign in
+        var userRole = (user.Role ?? string.Empty).Trim().ToLowerInvariant();
+        if (userRole != "admin")
+        {
+            return Unauthorized("Access denied: Your account does not have Admin privileges.");
         }
 
         return Ok(new

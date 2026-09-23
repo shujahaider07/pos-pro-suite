@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus, RotateCcw, X, User } from 'lucide-react';
+import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus, RotateCcw, X, User, LogOut } from 'lucide-react';
 import { initialProducts, initialCategories, getStoredTaxRate, type CartItem, type Product, type Category } from '@/lib/mock-data';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/pos-context';
@@ -15,7 +15,7 @@ import { API_BASE_URL } from '@/config/api';
 const OrderScreen = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { userName, role, email } = useAuth();
+  const { userName, role, email, logout } = useAuth();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [search, setSearch] = useState('');
@@ -342,13 +342,15 @@ const OrderScreen = () => {
       <div className="flex-1 flex flex-col min-w-0 border-r" style={{ width: '65%' }}>
         {/* Top Header & Barcode Search */}
         <div className="px-6 py-4 bg-card/80 backdrop-blur-xl border-b flex items-center gap-4">
-          <button
-            onClick={() => navigate('/admin')}
-            className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title="Admin Dashboard"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          {role === 'admin' && (
+            <button
+              onClick={() => navigate('/admin')}
+              className="p-2 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title="Admin Dashboard"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-soft">
               🏪
@@ -362,7 +364,7 @@ const OrderScreen = () => {
           {/* Active Cashier Badge */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-xs font-bold text-primary">
             <User className="w-3.5 h-3.5" />
-            <span>Cashier: {userName || 'Staff'}</span>
+            <span>{role === 'admin' ? 'Admin' : 'Cashier'}: {userName || 'Staff'}</span>
           </div>
 
           {/* Barcode / Search Box */}
@@ -397,6 +399,14 @@ const OrderScreen = () => {
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Sales Return</span>
+            </button>
+            <button
+              onClick={() => { logout(); navigate('/'); }}
+              className="h-10 px-3 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 text-xs font-bold transition-all flex items-center gap-1.5"
+              title="Sign out of account"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Logout</span>
             </button>
           </div>
         </div>

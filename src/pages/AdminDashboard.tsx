@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import {
   TrendingUp, DollarSign, ShoppingBag, BarChart3,
   Plus, Search, Trash2, X, Users,
-  FolderTree, FileText, Settings as SettingsIcon,
+  FolderTree, FileText, Settings as SettingsIcon, Calendar,
   Boxes, AlertTriangle, ArrowUpRight, History, UserCheck, Filter, Printer, Download, Tag, Edit, Save
 } from 'lucide-react';
 import {
@@ -77,6 +77,51 @@ const AdminDashboard = () => {
 
   // Cashier Filter for Sales & Performance
   const [selectedCashierFilter, setSelectedCashierFilter] = useState<string>('all');
+  // Category Filter for Sales History
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
+
+  // Date Filter for Sales & Performance
+  type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | '30days' | 'custom';
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [customFromDate, setCustomFromDate] = useState<string>('');
+  const [customToDate, setCustomToDate] = useState<string>('');
+
+  const getDateRange = (): { from: Date | null; to: Date | null; label: string } => {
+    const now = new Date();
+    const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+    const endOfDay = (d: Date) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
+
+    switch (datePreset) {
+      case 'today': {
+        const t = startOfDay(now);
+        return { from: t, to: endOfDay(now), label: `Today (${t.toLocaleDateString()})` };
+      }
+      case 'yesterday': {
+        const y = new Date(now); y.setDate(y.getDate() - 1);
+        return { from: startOfDay(y), to: endOfDay(y), label: `Yesterday (${y.toLocaleDateString()})` };
+      }
+      case '7days': {
+        const s = new Date(now); s.setDate(s.getDate() - 6);
+        return { from: startOfDay(s), to: endOfDay(now), label: 'Last 7 Days' };
+      }
+      case '30days': {
+        const s = new Date(now); s.setDate(s.getDate() - 29);
+        return { from: startOfDay(s), to: endOfDay(now), label: 'Last 30 Days' };
+      }
+      case 'custom': {
+        const f = customFromDate ? startOfDay(new Date(customFromDate)) : null;
+        const t = customToDate ? endOfDay(new Date(customToDate)) : null;
+        const parts = [];
+        if (f) parts.push(f.toLocaleDateString());
+        if (t) parts.push(t.toLocaleDateString());
+        return { from: f, to: t, label: parts.length ? parts.join(' → ') : 'Custom Range' };
+      }
+      default:
+        return { from: null, to: null, label: 'All Time' };
+    }
+  };
+
+  const { from: filterFromDate, to: filterToDate, dateRangeLabel } = getDateRange();
 
   // Active Tab Sync with Sidebar pathname & hash
   const activeTab = useMemo(() => {
@@ -102,12 +147,23 @@ const AdminDashboard = () => {
     return 'overview';
   }, [location.pathname, location.hash]);
 
-  // Orders Query (Admin fetches all orders)
+  // Orders Query (Admin fetches all orders with optional date & cashier filters)
   const { data: ordersList = initialOrders } = useQuery({
-    queryKey: ['orders'],
+    queryKey: ['orders', selectedCashierFilter, datePreset, customFromDate, customToDate],
     queryFn: async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/orders?role=admin`);
+        const params = new URLSearchParams();
+        params.append('role', 'admin');
+        if (selectedCashierFilter !== 'all') {
+          params.append('cashier', selectedCashierFilter);
+        }
+        if (filterFromDate) {
+          params.append('fromDate', filterFromDate.toISOString().split('T')[0]);
+        }
+        if (filterToDate) {
+          params.append('toDate', filterToDate.toISOString().split('T')[0]);
+        }
+        const res = await fetch(`${API_BASE_URL}/api/orders?${params.toString()}`);
         if (!res.ok) return initialOrders;
         const data = await res.json();
         return Array.isArray(data) && data.length > 0 ? data : initialOrders;
@@ -133,15 +189,21 @@ const AdminDashboard = () => {
     status: 'active' as const,
   });
 
-  // Fetch live dashboard data from backend
+  // Fetch live dashboard data from backend with date & cashier filters
   const { data: dashboardData = mockStats } = useQuery({
-    queryKey: ['dashboard', selectedCashierFilter],
+    queryKey: ['dashboard', selectedCashierFilter, datePreset, customFromDate, customToDate],
     queryFn: async () => {
       try {
         const params = new URLSearchParams();
         params.append('role', 'admin');
         if (selectedCashierFilter !== 'all') {
           params.append('cashier', selectedCashierFilter);
+        }
+        if (filterFromDate) {
+          params.append('fromDate', filterFromDate.toISOString().split('T')[0]);
+        }
+        if (filterToDate) {
+          params.append('toDate', filterToDate.toISOString().split('T')[0]);
         }
         const res = await fetch(`${API_BASE_URL}/api/dashboard?${params.toString()}`);
         if (!res.ok) return mockStats;
@@ -161,15 +223,35 @@ const AdminDashboard = () => {
     return Array.from(set);
   }, [staffList, ordersList]);
 
-  // Filtered Orders according to cashier filter
+  // Filtered Orders according to cashier + date + category filters (frontend fallback)
   const filteredOrdersList = useMemo(() => {
-    if (selectedCashierFilter === 'all') return ordersList;
-    const filter = selectedCashierFilter.toLowerCase();
-    return ordersList.filter((o: any) =>
-      (o.cashierName && o.cashierName.toLowerCase() === filter) ||
-      (o.cashierEmail && o.cashierEmail.toLowerCase() === filter)
-    );
-  }, [ordersList, selectedCashierFilter]);
+    let list = ordersList;
+    if (selectedCashierFilter !== 'all') {
+      const filter = selectedCashierFilter.toLowerCase();
+      list = list.filter((o: any) =>
+        (o.cashierName && o.cashierName.toLowerCase() === filter) ||
+        (o.cashierEmail && o.cashierEmail.toLowerCase() === filter)
+      );
+    }
+    if (filterFromDate) {
+      const from = new Date(filterFromDate); from.setHours(0, 0, 0, 0);
+      list = list.filter((o: any) => new Date(o.createdAt).getTime() >= from.getTime());
+    }
+    if (filterToDate) {
+      const to = new Date(filterToDate); to.setHours(23, 59, 59, 999);
+      list = list.filter((o: any) => new Date(o.createdAt).getTime() <= to.getTime());
+    }
+    if (selectedCategoryFilter !== 'all') {
+      list = list.filter((o: any) => {
+        if (!o.items || !Array.isArray(o.items)) return false;
+        return o.items.some((item: any) => {
+          const cat = item.product?.category || item.product?.categoryId || item.categoryId || item.category;
+          return cat && String(cat).toLowerCase() === selectedCategoryFilter.toLowerCase();
+        });
+      });
+    }
+    return list;
+  }, [ordersList, selectedCashierFilter, filterFromDate, filterToDate, selectedCategoryFilter]);
 
   // Fetch live products
   const { data: fetchedProducts } = useQuery<Product[]>({
@@ -301,19 +383,20 @@ const AdminDashboard = () => {
       return;
     }
     const catId = newCategory.id.trim() || newCategory.name.toLowerCase().replace(/\s+/g, '-');
-    const subs = newCategory.subcategories ? newCategory.subcategories.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const subsArr = newCategory.subcategories ? newCategory.subcategories.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const subsStr = subsArr.join(', ');
     try {
       const res = await fetch(`${API_BASE_URL}/api/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: catId, name: newCategory.name, icon: newCategory.icon || '🏪', subcategories: subs }),
+        body: JSON.stringify({ name: newCategory.name, icon: newCategory.icon || '🏪', subcategories: subsStr }),
       });
       if (res.ok) {
         toast.success(`Category "${newCategory.name}" created!`);
         queryClient.invalidateQueries({ queryKey: ['categories'] });
       }
     } catch {
-      setCategoriesList(prev => [...prev, { id: catId, name: newCategory.name, icon: newCategory.icon || '🏪', subcategories: subs }]);
+      setCategoriesList(prev => [...prev, { id: catId, name: newCategory.name, icon: newCategory.icon || '🏪', subcategories: subsArr }]);
       toast.success('Category saved locally');
     }
     setShowAddCategoryModal(false);
@@ -386,25 +469,93 @@ const AdminDashboard = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">Tuck Shop Dashboard</h1>
-                <p className="text-muted-foreground text-sm">Real-time overview of counter sales, revenue & stock alerts.</p>
+                <p className="text-muted-foreground text-sm">Real-time overview of counter sales, revenue & stock alerts. <span className="text-primary font-semibold">Range: {dateRangeLabel}</span></p>
               </div>
 
-              {/* Cashier Filter Dropdown */}
-              <div className="flex items-center gap-2 bg-card border px-3 py-2 rounded-xl shadow-sm">
-                <Filter className="w-4 h-4 text-primary" />
-                <span className="text-xs font-semibold text-muted-foreground">Cashier:</span>
-                <select
-                  value={selectedCashierFilter}
-                  onChange={e => setSelectedCashierFilter(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
-                >
-                  <option value="all">All Cashiers (Store Consolidated)</option>
-                  {uniqueCashiers.map(c => (
-                    <option key={c} value={c}>{c}</option>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Date Presets */}
+                <div className="flex items-center gap-1 bg-card border rounded-xl shadow-sm p-1">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'today', label: 'Today' },
+                    { id: 'yesterday', label: 'Yesterday' },
+                    { id: '7days', label: '7 Days' },
+                    { id: '30days', label: '30 Days' },
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => setDatePreset(p.id as DatePreset)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                        datePreset === p.id
+                          ? 'gradient-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
                   ))}
-                </select>
+                  <button
+                    onClick={() => setDatePreset('custom')}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                      datePreset === 'custom'
+                        ? 'gradient-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <Calendar className="w-3 h-3" /> Custom
+                  </button>
+                </div>
+
+                {/* Cashier Filter Dropdown */}
+                <div className="flex items-center gap-2 bg-card border px-3 py-2 rounded-xl shadow-sm">
+                  <Filter className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-semibold text-muted-foreground">Cashier:</span>
+                  <select
+                    value={selectedCashierFilter}
+                    onChange={e => setSelectedCashierFilter(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">All Cashiers</option>
+                    {uniqueCashiers.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
+
+            {/* Custom Date Inputs */}
+            {datePreset === 'custom' && (
+              <div className="flex flex-wrap items-center gap-3 bg-muted/40 border rounded-xl px-4 py-3">
+                <span className="text-xs font-bold text-muted-foreground uppercase">Select Range:</span>
+                <label className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-muted-foreground">From:</span>
+                  <input
+                    type="date"
+                    value={customFromDate}
+                    onChange={e => setCustomFromDate(e.target.value)}
+                    className="h-8 px-2 rounded-lg border bg-card text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-muted-foreground">To:</span>
+                  <input
+                    type="date"
+                    value={customToDate}
+                    onChange={e => setCustomToDate(e.target.value)}
+                    className="h-8 px-2 rounded-lg border bg-card text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </label>
+                {(customFromDate || customToDate) && (
+                  <button
+                    onClick={() => { setCustomFromDate(''); setCustomToDate(''); }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-destructive hover:bg-destructive/10"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -507,9 +658,9 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
-              {/* Category Breakdown */}
+              {/* Category Breakdown Pie */}
               <div className="bg-card rounded-2xl border p-6 space-y-4">
-                <h3 className="font-bold text-base">Sales by Category</h3>
+                <h3 className="font-bold text-base">Sales by Category (%)</h3>
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -530,6 +681,90 @@ const AdminDashboard = () => {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
+                {/* Category legend list */}
+                <div className="space-y-1.5">
+                  {(dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown).map((cp: any, i: number) => (
+                    <div key={cp.name} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                        <span className="font-semibold">{cp.name}</span>
+                      </div>
+                      <span className="font-mono text-muted-foreground">{cp.share ?? cp.value}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Category-wise Sales Breakdown Table */}
+            <div className="bg-card rounded-2xl border p-6 space-y-4">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <FolderTree className="w-4 h-4 text-primary" /> Category-wise Sales Breakdown
+                <span className="ml-auto text-xs text-muted-foreground font-normal">{dateRangeLabel} • {selectedCashierFilter === 'all' ? 'All Cashiers' : selectedCashierFilter}</span>
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b bg-muted/40 font-bold uppercase text-muted-foreground">
+                    <tr>
+                      <th className="p-3">Category</th>
+                      <th className="p-3">Revenue (Rs)</th>
+                      <th className="p-3">Units Sold</th>
+                      <th className="p-3">Orders</th>
+                      <th className="p-3">Avg / Order</th>
+                      <th className="p-3 w-[220px]">Share</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown).map((cp: any, i: number) => {
+                      const totalRev = (dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown)
+                        .reduce((s: number, x: any) => s + (x.revenue ?? 0), 0);
+                      const rev = cp.revenue ?? 0;
+                      const pct = totalRev > 0 ? (rev / totalRev) * 100 : 0;
+                      const avgPerOrder = cp.orderCount > 0 ? rev / cp.orderCount : 0;
+                      return (
+                        <tr key={cp.name} className="hover:bg-muted/20">
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                              <span className="font-bold">{cp.name}</span>
+                            </div>
+                          </td>
+                          <td className="p-3 font-bold text-primary">Rs {rev.toLocaleString()}</td>
+                          <td className="p-3 font-semibold">{(cp.unitsSold ?? 0).toLocaleString()}</td>
+                          <td className="p-3 font-semibold">{cp.orderCount ?? 0}</td>
+                          <td className="p-3 font-mono text-muted-foreground">Rs {Math.round(avgPerOrder).toLocaleString()}</td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                                <div
+                                  className="h-full rounded-full gradient-primary transition-all"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className="font-bold w-12 text-right">{(cp.share ?? pct).toFixed(0)}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {(() => {
+                      const breakdown = dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown;
+                      const totalRev = breakdown.reduce((s: number, x: any) => s + (x.revenue ?? 0), 0);
+                      const totalUnits = breakdown.reduce((s: number, x: any) => s + (x.unitsSold ?? 0), 0);
+                      const totalOrders = breakdown.reduce((s: number, x: any) => s + (x.orderCount ?? 0), 0);
+                      return (
+                        <tr className="bg-muted/30 border-t-2 border-primary/30 font-bold">
+                          <td className="p-3 uppercase text-muted-foreground">Total</td>
+                          <td className="p-3 text-primary text-sm">Rs {totalRev.toLocaleString()}</td>
+                          <td className="p-3">{totalUnits.toLocaleString()}</td>
+                          <td className="p-3">{totalOrders.toLocaleString()}</td>
+                          <td className="p-3 font-mono">Rs {totalOrders > 0 ? Math.round(totalRev / totalOrders).toLocaleString() : 0}</td>
+                          <td className="p-3 text-emerald-600">100%</td>
+                        </tr>
+                      );
+                    })()}
+                  </tbody>
+                </table>
               </div>
             </div>
           </>
@@ -723,23 +958,125 @@ const AdminDashboard = () => {
                 <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                   <BarChart3 className="w-6 h-6 text-primary" /> Sales & Order History
                 </h1>
-                <p className="text-muted-foreground text-sm">View counter transactions and process customer returns/refunds.</p>
+                <p className="text-muted-foreground text-sm">View counter transactions and process customer returns/refunds. <span className="text-primary font-semibold">{dateRangeLabel}</span> {selectedCashierFilter !== 'all' ? `• Cashier: ${selectedCashierFilter}` : ''}</p>
               </div>
 
-              {/* Cashier Filter */}
-              <div className="flex items-center gap-2 bg-card border px-3 py-2 rounded-xl shadow-sm">
-                <Filter className="w-4 h-4 text-primary" />
-                <span className="text-xs font-semibold text-muted-foreground">Filter Cashier:</span>
-                <select
-                  value={selectedCashierFilter}
-                  onChange={e => setSelectedCashierFilter(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
-                >
-                  <option value="all">All Cashiers / Staff</option>
-                  {uniqueCashiers.map(c => (
-                    <option key={c} value={c}>{c}</option>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Date Presets */}
+                <div className="flex items-center gap-1 bg-card border rounded-xl shadow-sm p-1">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'today', label: 'Today' },
+                    { id: 'yesterday', label: 'Yesterday' },
+                    { id: '7days', label: '7 Days' },
+                    { id: '30days', label: '30 Days' },
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => setDatePreset(p.id as DatePreset)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                        datePreset === p.id
+                          ? 'gradient-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
                   ))}
-                </select>
+                  <button
+                    onClick={() => setDatePreset('custom')}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                      datePreset === 'custom'
+                        ? 'gradient-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <Calendar className="w-3 h-3" /> Custom
+                  </button>
+                </div>
+
+                {/* Cashier Filter */}
+                <div className="flex items-center gap-2 bg-card border px-3 py-2 rounded-xl shadow-sm">
+                  <Filter className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-semibold text-muted-foreground">Cashier:</span>
+                  <select
+                    value={selectedCashierFilter}
+                    onChange={e => setSelectedCashierFilter(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">All Cashiers</option>
+                    {uniqueCashiers.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Date Inputs */}
+            {datePreset === 'custom' && (
+              <div className="flex flex-wrap items-center gap-3 bg-muted/40 border rounded-xl px-4 py-3">
+                <span className="text-xs font-bold text-muted-foreground uppercase">Select Range:</span>
+                <label className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-muted-foreground">From:</span>
+                  <input
+                    type="date"
+                    value={customFromDate}
+                    onChange={e => setCustomFromDate(e.target.value)}
+                    className="h-8 px-2 rounded-lg border bg-card text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-muted-foreground">To:</span>
+                  <input
+                    type="date"
+                    value={customToDate}
+                    onChange={e => setCustomToDate(e.target.value)}
+                    className="h-8 px-2 rounded-lg border bg-card text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </label>
+                {(customFromDate || customToDate) && (
+                  <button
+                    onClick={() => { setCustomFromDate(''); setCustomToDate(''); }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-destructive hover:bg-destructive/10"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Category Filter Pills for Sales History */}
+            <div className="bg-card rounded-2xl border p-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Filter className="w-4 h-4 text-primary flex-shrink-0" />
+                <span className="text-xs font-bold text-muted-foreground uppercase">Filter by Category:</span>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => setSelectedCategoryFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                      selectedCategoryFilter === 'all'
+                        ? 'gradient-primary text-primary-foreground shadow-sm'
+                        : 'bg-muted/60 border text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    All Categories
+                  </button>
+                  {categoriesList.filter(c => c.id !== 'all').map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => setSelectedCategoryFilter(c.id)}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                        selectedCategoryFilter === c.id
+                          ? 'gradient-primary text-primary-foreground shadow-sm'
+                          : 'bg-muted/60 border text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <span>{c.icon}</span>
+                      <span>{c.name}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -747,7 +1084,10 @@ const AdminDashboard = () => {
               <div className="space-y-3">
                 {filteredOrdersList.length === 0 ? (
                   <p className="text-center py-12 text-sm text-muted-foreground">
-                    No orders found {selectedCashierFilter !== 'all' ? `for cashier "${selectedCashierFilter}"` : ''}.
+                    No orders found
+                    {selectedCashierFilter !== 'all' ? ` for cashier "${selectedCashierFilter}"` : ''}
+                    {selectedCategoryFilter !== 'all' ? ` in "${selectedCategoryFilter}" category` : ''}.
+                    Try adjusting filters.
                   </p>
                 ) : (
                   filteredOrdersList.map((order: any) => (
@@ -853,6 +1193,74 @@ const AdminDashboard = () => {
                   {productsList.reduce((s, p) => s + (p.stockQuantity ?? 0), 0)} Units
                 </p>
                 <p className="text-xs text-muted-foreground">Across {productsList.length} catalog items</p>
+              </div>
+            </div>
+
+            {/* Category-wise Sales Table (Reports) */}
+            <div className="bg-card rounded-2xl border p-6 space-y-4">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <FolderTree className="w-4 h-4 text-primary" /> Category-wise Revenue Report
+                <span className="ml-auto text-xs text-muted-foreground font-normal">{dateRangeLabel}</span>
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b bg-muted/40 font-bold uppercase text-muted-foreground">
+                    <tr>
+                      <th className="p-3">Category</th>
+                      <th className="p-3">Revenue (Rs)</th>
+                      <th className="p-3">Share %</th>
+                      <th className="p-3">Units Sold</th>
+                      <th className="p-3">Orders Contributed</th>
+                      <th className="p-3">Avg / Order</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown).map((cp: any, i: number) => {
+                      const totalRev = (dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown)
+                        .reduce((s: number, x: any) => s + (x.revenue ?? 0), 0);
+                      const rev = cp.revenue ?? 0;
+                      const avgPerOrder = cp.orderCount > 0 ? rev / cp.orderCount : 0;
+                      return (
+                        <tr key={cp.name} className="hover:bg-muted/20">
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                              <span className="font-bold">{cp.name}</span>
+                            </div>
+                          </td>
+                          <td className="p-3 font-bold text-primary">Rs {rev.toLocaleString()}</td>
+                          <td className="p-3 font-semibold">
+                            <div className="flex items-center gap-2">
+                              <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div className="h-full gradient-primary rounded-full" style={{ width: `${cp.share ?? 0}%` }} />
+                              </div>
+                              <span>{(cp.share ?? 0).toFixed(1)}%</span>
+                            </div>
+                          </td>
+                          <td className="p-3 font-semibold">{(cp.unitsSold ?? 0).toLocaleString()}</td>
+                          <td className="p-3 font-semibold">{cp.orderCount ?? 0}</td>
+                          <td className="p-3 font-mono text-muted-foreground">Rs {Math.round(avgPerOrder).toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                    {(() => {
+                      const breakdown = dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown;
+                      const totalRev = breakdown.reduce((s: number, x: any) => s + (x.revenue ?? 0), 0);
+                      const totalUnits = breakdown.reduce((s: number, x: any) => s + (x.unitsSold ?? 0), 0);
+                      const totalOrders = breakdown.reduce((s: number, x: any) => s + (x.orderCount ?? 0), 0);
+                      return (
+                        <tr className="bg-muted/30 border-t-2 border-primary/30 font-bold">
+                          <td className="p-3 uppercase text-muted-foreground">Grand Total</td>
+                          <td className="p-3 text-primary text-sm">Rs {totalRev.toLocaleString()}</td>
+                          <td className="p-3 text-emerald-600">100%</td>
+                          <td className="p-3">{totalUnits.toLocaleString()}</td>
+                          <td className="p-3">{totalOrders.toLocaleString()}</td>
+                          <td className="p-3 font-mono">Rs {totalOrders > 0 ? Math.round(totalRev / totalOrders).toLocaleString() : 0}</td>
+                        </tr>
+                      );
+                    })()}
+                  </tbody>
+                </table>
               </div>
             </div>
 

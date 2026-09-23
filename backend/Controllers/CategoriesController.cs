@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PosProSuite.Api.Data;
@@ -38,13 +39,59 @@ public class CategoriesController : ControllerBase
         return Ok(result);
     }
 
-    public record CreateCategoryDto(string Name, string Icon, string? Subcategories);
-    public record UpdateCategoryDto(string? Name, string? Icon, string? Subcategories);
+    public record CreateCategoryDto(string Name, string? Icon, object? Subcategories);
+    public record UpdateCategoryDto(string? Name, string? Icon, object? Subcategories);
+
+    private static List<string> NormalizeSubcategories(object? subcategories)
+    {
+        if (subcategories == null)
+            return new List<string>();
+
+        if (subcategories is JsonElement je)
+        {
+            switch (je.ValueKind)
+            {
+                case JsonValueKind.Array:
+                    return je.EnumerateArray()
+                        .Select(e => e.GetString())
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Select(s => s!.Trim())
+                        .ToList();
+                case JsonValueKind.String:
+                    var str = je.GetString();
+                    if (string.IsNullOrWhiteSpace(str))
+                        return new List<string>();
+                    return str.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .ToList();
+            }
+        }
+
+        if (subcategories is string s)
+        {
+            if (string.IsNullOrWhiteSpace(s))
+                return new List<string>();
+            return s.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+        }
+
+        if (subcategories is IEnumerable<string> enumerable)
+        {
+            return enumerable.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
+        }
+
+        return new List<string>();
+    }
 
     [HttpPost]
     public async Task<ActionResult> CreateCategory([FromBody] CreateCategoryDto dto)
     {
-        var categoryId = dto.Name.ToLower().Replace(" ", "-");
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            ModelState.AddModelError(nameof(dto.Name), "Category name is required.");
+
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var categoryId = dto.Name.Trim().ToLower().Replace(" ", "-");
         var existing = await _context.Categories.FindAsync(categoryId);
         if (existing != null)
         {
@@ -54,18 +101,15 @@ public class CategoriesController : ControllerBase
         var cat = new CategoryEntity
         {
             Id = categoryId,
-            Name = dto.Name,
-            Icon = string.IsNullOrWhiteSpace(dto.Icon) ? "🍽️" : dto.Icon
+            Name = dto.Name.Trim(),
+            Icon = string.IsNullOrWhiteSpace(dto.Icon) ? "🏪" : dto.Icon.Trim()
         };
         _context.Categories.Add(cat);
 
-        if (!string.IsNullOrWhiteSpace(dto.Subcategories))
+        var subs = NormalizeSubcategories(dto.Subcategories);
+        foreach (var sub in subs)
         {
-            var subs = dto.Subcategories.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var sub in subs)
-            {
-                _context.Subcategories.Add(new SubcategoryEntity { Name = sub, CategoryId = categoryId });
-            }
+            _context.Subcategories.Add(new SubcategoryEntity { Name = sub, CategoryId = categoryId });
         }
 
         await _context.SaveChangesAsync();
@@ -83,22 +127,20 @@ public class CategoriesController : ControllerBase
             return NotFound();
 
         if (!string.IsNullOrWhiteSpace(dto.Name))
-            category.Name = dto.Name;
+            category.Name = dto.Name.Trim();
 
         if (!string.IsNullOrWhiteSpace(dto.Icon))
-            category.Icon = dto.Icon;
+            category.Icon = dto.Icon.Trim();
 
         if (dto.Subcategories != null)
         {
-            var incoming = dto.Subcategories
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            var incoming = NormalizeSubcategories(dto.Subcategories)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var existingNames = category.Subcategories
                 .Select(s => s.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            // Remove subcategories not present in incoming list
             var toRemove = category.Subcategories
                 .Where(s => !incoming.Contains(s.Name))
                 .ToList();
@@ -106,7 +148,6 @@ public class CategoriesController : ControllerBase
             foreach (var rem in toRemove)
                 _context.Subcategories.Remove(rem);
 
-            // Add new subcategories that don't already exist
             var toAdd = incoming.Except(existingNames, StringComparer.OrdinalIgnoreCase);
             foreach (var name in toAdd)
                 _context.Subcategories.Add(new SubcategoryEntity { Name = name, CategoryId = category.Id });

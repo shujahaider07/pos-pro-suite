@@ -11,14 +11,33 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const ProtectedRoute = ({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'admin' | 'employee' }) => {
-  const { isAuthenticated, role } = useAuth();
+const ProtectedRoute = ({
+  children,
+  requiredRole,
+}: {
+  children: React.ReactNode;
+  requiredRole?: 'admin' | 'employee' | 'admin-or-employee';
+}) => {
+  const { isAuthenticated, role, logout } = useAuth();
   if (!isAuthenticated) return <Navigate to="/" replace />;
 
-  const userRole = (role || 'admin').toLowerCase();
-  if (requiredRole && requiredRole.toLowerCase() === 'admin' && userRole !== 'admin') {
+  const userRole = (role || '').toLowerCase();
+
+  // Global: must be either admin or employee to access any protected route
+  if (userRole !== 'admin' && userRole !== 'employee') {
+    logout();
+    return <Navigate to="/" replace />;
+  }
+
+  // Role-based restrictions
+  if (requiredRole === 'admin' && userRole !== 'admin') {
+    // Staff trying to access Admin-only area — redirect to POS screen (/order)
     return <Navigate to="/order" replace />;
   }
+  if (requiredRole === 'employee' && userRole !== 'employee' && userRole !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+
   return <>{children}</>;
 };
 
@@ -31,8 +50,9 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/" element={<Login />} />
-            {/* Main POS counter screen — no table selection needed */}
-            <Route path="/order" element={<ProtectedRoute><OrderScreen /></ProtectedRoute>} />
+            {/* POS Counter Screen — accessible to Admin AND Staff (Cashier) */}
+            <Route path="/order" element={<ProtectedRoute requiredRole="admin-or-employee"><OrderScreen /></ProtectedRoute>} />
+            {/* Admin Dashboard, Inventory, Reports, Settings — Admin ONLY */}
             <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/*" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />

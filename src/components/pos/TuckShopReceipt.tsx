@@ -44,14 +44,17 @@ const TuckShopReceipt = ({
           <title>Receipt - ${orderNumber}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Courier New', monospace; font-size: 12px; width: 280px; padding: 8px; }
+            body { font-family: 'Courier New', monospace; font-size: 14px; font-weight: 700; width: 300px; padding: 10px; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .center { text-align: center; }
-            .bold { font-weight: bold; }
-            .line { border-top: 1px dashed #000; margin: 6px 0; }
-            .row { display: flex; justify-content: space-between; margin: 3px 0; }
-            .total-row { font-size: 14px; font-weight: bold; }
-            h2 { font-size: 16px; margin-bottom: 2px; }
-            p { font-size: 11px; }
+            .bold { font-weight: 700; }
+            .line { border-top: 2px solid #000; margin: 8px 0; }
+            .row { display: flex; justify-content: space-between; margin: 4px 0; }
+            .total-row { font-size: 16px; font-weight: 700; }
+            h2 { font-size: 18px; margin-bottom: 2px; font-weight: 700; }
+            p { font-size: 12px; font-weight: 700; }
+            @media print {
+              body { font-size: 13px; width: 100%; }
+            }
           </style>
         </head>
         <body>
@@ -92,72 +95,79 @@ const TuckShopReceipt = ({
         {/* Receipt Body */}
         <div className="p-5">
           {/* Printable area */}
-          <div ref={receiptRef} className="font-mono text-xs">
+          <div ref={receiptRef} className="font-mono text-sm font-bold" style={{ color: '#000' }}>
             {/* Shop Header */}
-            <div className="center bold" style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: 4 }}>
-              <h2 style={{ fontSize: 14, margin: 0 }}>🏪 TUCK SHOP POS</h2>
-              <p style={{ fontSize: 10, color: '#666' }}>Quick &amp; Easy Counter Sales</p>
-              <p style={{ fontSize: 10 }}>{dateStr} {timeStr}</p>
-              <p style={{ fontSize: 10 }}>Order: <strong>{orderNumber}</strong></p>
-              <p style={{ fontSize: 10 }}>Cashier: <strong>{cashierName}</strong></p>
+            <div className="center bold" style={{ textAlign: 'center', fontWeight: '700', marginBottom: 6 }}>
+              <h2 style={{ fontSize: 16, margin: 0, fontWeight: '700' }}>TUCK SHOP POS</h2>
+              <p style={{ fontSize: 11, fontWeight: '700' }}>Quick & Easy Counter Sales</p>
+              <p style={{ fontSize: 11, fontWeight: '700' }}>{dateStr} {timeStr}</p>
+              <p style={{ fontSize: 11, fontWeight: '700' }}>Order: <strong>{orderNumber}</strong></p>
+              <p style={{ fontSize: 11, fontWeight: '700' }}>Cashier: <strong>{cashierName}</strong></p>
             </div>
 
-            <div className="line" style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
+            <div className="line" style={{ borderTop: '2px solid #000', margin: '8px 0' }} />
 
             {/* Items */}
             {items.map((item) => (
-              <div key={item.product.id} className="row" style={{ display: 'flex', justify: 'space-between', margin: '3px 0' }}>
-                <span style={{ flex: 1 }}>{item.product.name}</span>
-                <span style={{ marginLeft: 8 }}>{item.quantity}x</span>
-                <span style={{ marginLeft: 8, textAlign: 'right', minWidth: 50 }}>Rs {item.product.price * item.quantity}</span>
+              <div key={item.product.id} className="row" style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontWeight: '700' }}>
+                <span style={{ flex: 1, fontSize: 12 }}>{item.product.name}</span>
+                <span style={{ marginLeft: 8, fontSize: 12 }}>{item.quantity}x</span>
+                <span style={{ marginLeft: 8, textAlign: 'right', minWidth: 55, fontSize: 12 }}>Rs {item.product.price * item.quantity}</span>
               </div>
             ))}
 
-            <div className="line" style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
+            <div className="line" style={{ borderTop: '2px solid #000', margin: '8px 0' }} />
 
             {/* Tax breakdown */}
-            <div className="row" style={{ display: 'flex', justify: 'space-between', margin: '3px 0' }}>
-              <span>Subtotal</span>
-              <span>Rs {subtotal}</span>
+            <div className="row" style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontWeight: '700' }}>
+              <span style={{ fontSize: 12 }}>Subtotal</span>
+              <span style={{ fontSize: 12 }}>Rs {subtotal}</span>
             </div>
 
             {taxRate > 0 && (
-              <div className="row" style={{ display: 'flex', justify: 'space-between', margin: '3px 0' }}>
-                <span>GST Tax ({taxRate}%)</span>
-                <span>Rs {taxAmount}</span>
+              <div className="row" style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontWeight: '700' }}>
+                <span style={{ fontSize: 12 }}>GST Tax ({taxRate}%)</span>
+                <span style={{ fontSize: 12 }}>Rs {taxAmount}</span>
               </div>
             )}
 
             {/* Total */}
-            <div className="row total-row" style={{ display: 'flex', justify: 'space-between', fontWeight: 'bold', fontSize: 14, marginTop: 4 }}>
+            <div className="row total-row" style={{ display: 'flex', justify: 'space-between', fontWeight: '700', fontSize: 16, marginTop: 6 }}>
               <span>GRAND TOTAL</span>
               <span>Rs {grandTotal}</span>
             </div>
 
-            <div className="line" style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
+            <div className="line" style={{ borderTop: '2px solid #000', margin: '8px 0' }} />
 
-            <div style={{ display: 'flex', justify: 'space-between', margin: '3px 0', fontSize: 11 }}>
+            <div style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontSize: 12, fontWeight: '700' }}>
               <span>Payment</span>
               <span>{paymentMethod}</span>
             </div>
 
             {paymentMethod === 'Cash' && cashReceived && cashReceived > 0 && (
               <>
-                <div style={{ display: 'flex', justify: 'space-between', margin: '3px 0', fontSize: 11 }}>
+                <div style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontSize: 12, fontWeight: '700' }}>
                   <span>Cash Received</span>
                   <span>Rs {cashReceived}</span>
                 </div>
-                <div style={{ display: 'flex', justify: 'space-between', margin: '3px 0', fontSize: 11, color: '#16a34a', fontWeight: 'bold' }}>
+                <div style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontSize: 12, fontWeight: '700', color: '#16a34a' }}>
                   <span>Change</span>
                   <span>Rs {change >= 0 ? change : 0}</span>
                 </div>
               </>
             )}
 
-            <div className="line" style={{ borderTop: '1px dashed #000', margin: '8px 0' }} />
+            <div className="line" style={{ borderTop: '2px solid #000', margin: '8px 0' }} />
 
-            <div className="center" style={{ textAlign: 'center', fontSize: 10, color: '#666' }}>
+            <div className="center" style={{ textAlign: 'center', fontSize: 11, fontWeight: '700' }}>
               Thank you for your purchase!
+            </div>
+
+            <div className="center" style={{ textAlign: 'center', fontSize: 10, fontWeight: '700', marginTop: 6 }}>
+              powered by SYR
+            </div>
+            <div className="center" style={{ textAlign: 'center', fontSize: 10, fontWeight: '700' }}>
+              Contact no: 0302-8921819
             </div>
           </div>
 

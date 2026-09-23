@@ -27,7 +27,11 @@ public class OrdersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult> GetOrders([FromQuery] string? cashier = null, [FromQuery] string? role = null)
+    public async Task<ActionResult> GetOrders(
+        [FromQuery] string? cashier = null,
+        [FromQuery] string? role = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null)
     {
         var query = _context.Orders
             .Include(o => o.Items)
@@ -52,6 +56,12 @@ public class OrdersController : ControllerBase
                 (o.CashierName != null && o.CashierName.ToLower() == normalizedCashier) ||
                 (o.CashierEmail != null && o.CashierEmail.ToLower() == normalizedCashier));
         }
+
+        // Date range filter
+        if (fromDate.HasValue)
+            query = query.Where(o => o.CreatedAt.Date >= fromDate.Value.Date);
+        if (toDate.HasValue)
+            query = query.Where(o => o.CreatedAt.Date <= toDate.Value.Date);
 
         var orders = await query
             .OrderByDescending(o => o.CreatedAt)
