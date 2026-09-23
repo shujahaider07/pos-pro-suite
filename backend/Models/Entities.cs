@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
 namespace PosProSuite.Api.Models;
@@ -8,6 +9,15 @@ public class ProductEntity
     public string Name { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public string CategoryId { get; set; } = string.Empty;
+
+    [NotMapped]
+    [JsonPropertyName("category")]
+    public string Category
+    {
+        get => CategoryId;
+        set { if (!string.IsNullOrWhiteSpace(value)) CategoryId = value.Trim(); }
+    }
+
     public string? Subcategory { get; set; }
     public string Image { get; set; } = string.Empty;
     public bool Available { get; set; }

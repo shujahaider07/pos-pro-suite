@@ -83,7 +83,9 @@ public class OrdersController : ControllerBase
                 productId = i.ProductId,
                 productName = i.Product != null ? i.Product.Name : $"Item #{i.ProductId}",
                 quantity = i.Quantity,
-                price = i.UnitPrice
+                price = i.UnitPrice,
+                categoryId = i.Product != null ? i.Product.CategoryId : null,
+                category = i.Product != null ? i.Product.CategoryId : null
             })
         });
 

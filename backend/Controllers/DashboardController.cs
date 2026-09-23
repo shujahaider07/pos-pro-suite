@@ -116,11 +116,15 @@ public class DashboardController : ControllerBase
             .ToListAsync();
 
         // Category performance — respect date filter, include revenue + units sold
+        var categoryNames = await _context.Categories
+            .ToDictionaryAsync(c => c.Id, c => c.Name);
+
         var categoryPerformanceRaw = await orderItemsBase
+            .Where(i => i.Product != null)
             .GroupBy(i => i.Product!.CategoryId)
             .Select(g => new
             {
-                name = g.Key,
+                id = g.Key,
                 revenue = g.Sum(i => i.UnitPrice * i.Quantity),
                 unitsSold = g.Sum(i => i.Quantity),
                 orderCount = g.Select(i => i.OrderId).Distinct().Count()
@@ -129,13 +133,20 @@ public class DashboardController : ControllerBase
             .ToListAsync();
 
         var totalCatRevenue = categoryPerformanceRaw.Sum(c => c.revenue);
-        var categoryPerformanceWithDetails = categoryPerformanceRaw.Select(c => new
+        var categoryPerformanceWithDetails = categoryPerformanceRaw.Select(c =>
         {
-            name = c.name,
-            revenue = c.revenue,
-            unitsSold = c.unitsSold,
-            orderCount = c.orderCount,
-            share = totalCatRevenue > 0 ? Math.Round(c.revenue * 100 / totalCatRevenue, 2) : 0
+            var displayName = !string.IsNullOrWhiteSpace(c.id) && categoryNames.TryGetValue(c.id, out var n)
+                ? n
+                : (string.IsNullOrWhiteSpace(c.id) || c.id == "all" ? "Uncategorized" : c.id);
+            return new
+            {
+                id = c.id,
+                name = displayName,
+                revenue = c.revenue,
+                unitsSold = c.unitsSold,
+                orderCount = c.orderCount,
+                share = totalCatRevenue > 0 ? Math.Round(c.revenue * 100 / totalCatRevenue, 2) : 0
+            };
         }).ToList();
 
         var categoryPercentages = categoryPerformanceWithDetails

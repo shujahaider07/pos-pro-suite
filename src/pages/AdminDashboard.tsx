@@ -19,8 +19,8 @@ import { RotateCcw } from 'lucide-react';
 import { useAuth } from '@/lib/pos-context';
 import { generateBarcode } from '@/lib/barcode';
 import {
-  dashboardStats as mockStats, initialProducts, initialCategories,
-  initialStaff, initialOrders, initialSettings, getStoredTaxRate, setStoredTaxRate,
+  initialProducts, initialCategories,
+  initialSettings, getStoredTaxRate, setStoredTaxRate,
   type Product, type Category, type StaffMember,
   type OrderRecord
 } from '@/lib/mock-data';
@@ -28,6 +28,46 @@ import { toast } from 'sonner';
 import { API_BASE_URL } from '@/config/api';
 
 const COLORS = ['hsl(234,89%,56%)', 'hsl(152,69%,40%)', 'hsl(38,92%,50%)', 'hsl(0,72%,56%)', 'hsl(280,60%,55%)'];
+
+const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+
+function resolveItemCategory(
+  item: any,
+  productsById: Map<number, Product>,
+  productsByName: Map<string, Product>,
+  categoriesById: Map<string, Category>,
+  categoriesByName: Map<string, Category>,
+) {
+  const product =
+    (item?.productId != null ? productsById.get(Number(item.productId)) : undefined) ||
+    (item?.productName ? productsByName.get(norm(item.productName)) : undefined) ||
+    item?.product;
+
+  const rawId = item?.categoryId || item?.category || product?.categoryId || product?.category || '';
+  const rawName = item?.categoryName || '';
+  const cat =
+    categoriesById.get(norm(rawId)) ||
+    categoriesByName.get(norm(rawId)) ||
+    categoriesByName.get(norm(rawName));
+
+  const id = cat?.id || String(rawId || 'uncategorized');
+  const name = cat?.name || rawName || String(rawId || 'Uncategorized');
+  return { id, name };
+}
+
+function itemMatchesCategory(
+  item: any,
+  selected: string,
+  productsById: Map<number, Product>,
+  productsByName: Map<string, Product>,
+  categoriesById: Map<string, Category>,
+  categoriesByName: Map<string, Category>,
+) {
+  if (!selected || selected === 'all') return true;
+  const { id, name } = resolveItemCategory(item, productsById, productsByName, categoriesById, categoriesByName);
+  const s = norm(selected);
+  return norm(id) === s || norm(name) === s;
+}
 
 const AdminDashboard = () => {
   const location = useLocation();
@@ -148,71 +188,73 @@ const AdminDashboard = () => {
   }, [location.pathname, location.hash]);
 
   // Orders Query (Admin fetches all orders with optional date & cashier filters)
-  const { data: ordersList = initialOrders } = useQuery({
+  const { data: ordersList = [] } = useQuery({
     queryKey: ['orders', selectedCashierFilter, datePreset, customFromDate, customToDate],
     queryFn: async () => {
-      try {
-        const params = new URLSearchParams();
-        params.append('role', 'admin');
-        if (selectedCashierFilter !== 'all') {
-          params.append('cashier', selectedCashierFilter);
-        }
-        if (filterFromDate) {
-          params.append('fromDate', filterFromDate.toISOString().split('T')[0]);
-        }
-        if (filterToDate) {
-          params.append('toDate', filterToDate.toISOString().split('T')[0]);
-        }
-        const res = await fetch(`${API_BASE_URL}/api/orders?${params.toString()}`);
-        if (!res.ok) return initialOrders;
-        const data = await res.json();
-        return Array.isArray(data) && data.length > 0 ? data : initialOrders;
-      } catch {
-        return initialOrders;
+      const params = new URLSearchParams();
+      params.append('role', 'admin');
+      if (selectedCashierFilter !== 'all') {
+        params.append('cashier', selectedCashierFilter);
       }
+      if (filterFromDate) {
+        params.append('fromDate', filterFromDate.toISOString().split('T')[0]);
+      }
+      if (filterToDate) {
+        params.append('toDate', filterToDate.toISOString().split('T')[0]);
+      }
+      const res = await fetch(`${API_BASE_URL}/api/orders?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     },
-    initialData: initialOrders,
   });
 
   // Settings State
   const [gstRate, setGstRate] = useState<number>(getStoredTaxRate());
 
-  // Staff State
-  const [staffList, setStaffList] = useState<StaffMember[]>(initialStaff);
-  const [showAddStaffModal, setShowAddStaffModal] = useState(false);
-  const [newStaff, setNewStaff] = useState({
-    name: '',
-    email: '',
-    role: 'employee' as const,
-    phone: '',
-    shift: 'Morning',
-    status: 'active' as const,
-  });
-
-  // Fetch live dashboard data from backend with date & cashier filters
-  const { data: dashboardData = mockStats } = useQuery({
-    queryKey: ['dashboard', selectedCashierFilter, datePreset, customFromDate, customToDate],
+  // Staff Query (Real DB users)
+  const { data: staffList = [] } = useQuery<StaffMember[]>({
+    queryKey: ['users'],
     queryFn: async () => {
       try {
-        const params = new URLSearchParams();
-        params.append('role', 'admin');
-        if (selectedCashierFilter !== 'all') {
-          params.append('cashier', selectedCashierFilter);
-        }
-        if (filterFromDate) {
-          params.append('fromDate', filterFromDate.toISOString().split('T')[0]);
-        }
-        if (filterToDate) {
-          params.append('toDate', filterToDate.toISOString().split('T')[0]);
-        }
-        const res = await fetch(`${API_BASE_URL}/api/dashboard?${params.toString()}`);
-        if (!res.ok) return mockStats;
-        return res.json();
+        const res = await fetch(`${API_BASE_URL}/api/users`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data)
+          ? data.map((u: any) => ({
+              id: u.id,
+              name: u.name || u.email?.split('@')[0] || 'User',
+              email: u.email,
+              role: u.role || 'employee',
+              phone: '',
+              shift: 'General',
+              status: 'active' as const,
+            }))
+          : [];
       } catch {
-        return mockStats;
+        return [];
       }
     },
-    initialData: mockStats,
+  });
+
+  const { data: dashboardData } = useQuery({
+    queryKey: ['dashboard', selectedCashierFilter, datePreset, customFromDate, customToDate],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.append('role', 'admin');
+      if (selectedCashierFilter !== 'all') {
+        params.append('cashier', selectedCashierFilter);
+      }
+      if (filterFromDate) {
+        params.append('fromDate', filterFromDate.toISOString().split('T')[0]);
+      }
+      if (filterToDate) {
+        params.append('toDate', filterToDate.toISOString().split('T')[0]);
+      }
+      const res = await fetch(`${API_BASE_URL}/api/dashboard?${params.toString()}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
   });
 
   // Unique Cashiers list for filtering
@@ -222,36 +264,6 @@ const AdminDashboard = () => {
     ordersList.forEach((o: any) => o.cashierName && set.add(o.cashierName));
     return Array.from(set);
   }, [staffList, ordersList]);
-
-  // Filtered Orders according to cashier + date + category filters (frontend fallback)
-  const filteredOrdersList = useMemo(() => {
-    let list = ordersList;
-    if (selectedCashierFilter !== 'all') {
-      const filter = selectedCashierFilter.toLowerCase();
-      list = list.filter((o: any) =>
-        (o.cashierName && o.cashierName.toLowerCase() === filter) ||
-        (o.cashierEmail && o.cashierEmail.toLowerCase() === filter)
-      );
-    }
-    if (filterFromDate) {
-      const from = new Date(filterFromDate); from.setHours(0, 0, 0, 0);
-      list = list.filter((o: any) => new Date(o.createdAt).getTime() >= from.getTime());
-    }
-    if (filterToDate) {
-      const to = new Date(filterToDate); to.setHours(23, 59, 59, 999);
-      list = list.filter((o: any) => new Date(o.createdAt).getTime() <= to.getTime());
-    }
-    if (selectedCategoryFilter !== 'all') {
-      list = list.filter((o: any) => {
-        if (!o.items || !Array.isArray(o.items)) return false;
-        return o.items.some((item: any) => {
-          const cat = item.product?.category || item.product?.categoryId || item.categoryId || item.category;
-          return cat && String(cat).toLowerCase() === selectedCategoryFilter.toLowerCase();
-        });
-      });
-    }
-    return list;
-  }, [ordersList, selectedCashierFilter, filterFromDate, filterToDate, selectedCategoryFilter]);
 
   // Fetch live products
   const { data: fetchedProducts } = useQuery<Product[]>({
@@ -297,6 +309,140 @@ const AdminDashboard = () => {
     }
   }, [fetchedCategories]);
 
+  const productsById = useMemo(
+    () => new Map(productsList.map(p => [Number(p.id), p])),
+    [productsList],
+  );
+  const productsByName = useMemo(
+    () => new Map(productsList.map(p => [norm(p.name), p])),
+    [productsList],
+  );
+  const categoriesById = useMemo(
+    () => new Map(categoriesList.map(c => [norm(c.id), c])),
+    [categoriesList],
+  );
+  const categoriesByName = useMemo(
+    () => new Map(categoriesList.map(c => [norm(c.name), c])),
+    [categoriesList],
+  );
+
+  const dateCashierOrders = useMemo(() => {
+    let list = ordersList as any[];
+    if (selectedCashierFilter !== 'all') {
+      const filter = selectedCashierFilter.toLowerCase();
+      list = list.filter((o: any) =>
+        (o.cashierName && o.cashierName.toLowerCase() === filter) ||
+        (o.cashierEmail && o.cashierEmail.toLowerCase() === filter)
+      );
+    }
+    if (filterFromDate) {
+      const from = new Date(filterFromDate); from.setHours(0, 0, 0, 0);
+      list = list.filter((o: any) => new Date(o.createdAt).getTime() >= from.getTime());
+    }
+    if (filterToDate) {
+      const to = new Date(filterToDate); to.setHours(23, 59, 59, 999);
+      list = list.filter((o: any) => new Date(o.createdAt).getTime() <= to.getTime());
+    }
+    return list;
+  }, [ordersList, selectedCashierFilter, filterFromDate, filterToDate]);
+
+  const categorySalesBreakdown = useMemo(() => {
+    const buckets = new Map<string, { id: string; name: string; revenue: number; unitsSold: number; orderIds: Set<string | number> }>();
+
+    const ensureBucket = (id: string, name: string) => {
+      const key = norm(id || name);
+      if (!key) return null;
+      if (!buckets.has(key)) {
+        buckets.set(key, { id, name, revenue: 0, unitsSold: 0, orderIds: new Set() });
+      }
+      const bucket = buckets.get(key)!;
+      if (name && (bucket.name === bucket.id || bucket.name === 'Uncategorized')) bucket.name = name;
+      return bucket;
+    };
+
+    categoriesList.filter(c => c.id !== 'all').forEach(c => ensureBucket(c.id, c.name));
+
+    dateCashierOrders.forEach((order: any) => {
+      const status = String(order.status || 'Completed');
+      if (status === 'Cancelled' || status === 'Returned') return;
+      (order.items || []).forEach((item: any) => {
+        const { id, name } = resolveItemCategory(item, productsById, productsByName, categoriesById, categoriesByName);
+        if (norm(id) === 'all') return;
+        const bucket = ensureBucket(id, name);
+        if (!bucket) return;
+        const qty = Number(item.quantity ?? 0);
+        const price = Number(item.price ?? item.unitPrice ?? 0);
+        bucket.unitsSold += qty;
+        bucket.revenue += qty * price;
+        bucket.orderIds.add(order.id ?? order.orderNumber);
+      });
+    });
+
+    const rows = Array.from(buckets.values()).map(b => ({
+      id: b.id,
+      name: b.name,
+      revenue: b.revenue,
+      unitsSold: b.unitsSold,
+      orderCount: b.orderIds.size,
+      share: 0,
+    }));
+    const totalRev = rows.reduce((s, r) => s + r.revenue, 0);
+    rows.forEach(r => { r.share = totalRev > 0 ? (r.revenue * 100) / totalRev : 0; });
+    return rows.sort((a, b) => b.revenue - a.revenue);
+  }, [dateCashierOrders, productsById, productsByName, categoriesById, categoriesByName, categoriesList]);
+
+  const visibleCategoryBreakdown = useMemo(() => {
+    if (selectedCategoryFilter === 'all') return categorySalesBreakdown;
+    return categorySalesBreakdown.filter(c =>
+      norm(c.id) === norm(selectedCategoryFilter) || norm(c.name) === norm(selectedCategoryFilter)
+    );
+  }, [categorySalesBreakdown, selectedCategoryFilter]);
+
+  const categoryPerformance = useMemo(
+    () => categorySalesBreakdown.filter(c => c.revenue > 0).map(c => ({ name: c.name, value: Number(c.share.toFixed(1)) })),
+    [categorySalesBreakdown],
+  );
+
+  const filteredOrdersList = useMemo(() => {
+    return dateCashierOrders.flatMap((order: any) => {
+      const items = Array.isArray(order.items) ? order.items : [];
+      const matched = items.filter((item: any) =>
+        itemMatchesCategory(item, selectedCategoryFilter, productsById, productsByName, categoriesById, categoriesByName)
+      );
+      if (selectedCategoryFilter !== 'all' && matched.length === 0) return [];
+      const displayItems = selectedCategoryFilter === 'all' ? items : matched;
+      const categoryTotal = displayItems.reduce((s: number, item: any) => {
+        return s + Number(item.quantity ?? 0) * Number(item.price ?? item.unitPrice ?? 0);
+      }, 0);
+      return [{
+        ...order,
+        items: displayItems,
+        itemsCount: displayItems.length,
+        total: selectedCategoryFilter === 'all' ? (order.total ?? categoryTotal) : categoryTotal,
+      }];
+    });
+  }, [dateCashierOrders, selectedCategoryFilter, productsById, productsByName, categoriesById, categoriesByName]);
+
+  const computedKpis = useMemo(() => {
+    const now = new Date();
+    const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const completed = dateCashierOrders.filter((o: any) => {
+      const s = String(o.status || 'Completed');
+      return s !== 'Cancelled' && s !== 'Returned';
+    });
+    const sum = (list: any[]) => list.reduce((s, o) => s + Number(o.total ?? 0), 0);
+    const today = completed.filter((o: any) => new Date(o.createdAt).getTime() >= startToday.getTime());
+    const month = completed.filter((o: any) => new Date(o.createdAt).getTime() >= monthStart.getTime());
+    return {
+      todayRevenue: sum(today),
+      todayOrderCount: today.length,
+      monthlyRevenue: sum(month),
+      totalOrders: completed.length,
+      lowStockCount: productsList.filter(p => (p.stockQuantity ?? 0) <= 5).length,
+    };
+  }, [dateCashierOrders, productsList]);
+
   // Filtered Products
   const filteredProducts = useMemo(() => {
     let list = productsList;
@@ -324,7 +470,7 @@ const AdminDashboard = () => {
       const res = await fetch(`${API_BASE_URL}/api/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalProduct),
+        body: JSON.stringify({ ...finalProduct, categoryId: finalProduct.category }),
       });
       if (res.ok) {
         const created: Product = await res.json().catch(() => null);
@@ -359,7 +505,7 @@ const AdminDashboard = () => {
       const res = await fetch(`${API_BASE_URL}/api/products/${editingProduct.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingProduct),
+        body: JSON.stringify({ ...editingProduct, categoryId: editingProduct.category || editingProduct.categoryId }),
       });
       if (res.ok) {
         const updated: Product = await res.json().catch(() => null);
@@ -521,6 +667,20 @@ const AdminDashboard = () => {
                     ))}
                   </select>
                 </div>
+                <div className="flex items-center gap-2 bg-card border px-3 py-2 rounded-xl shadow-sm">
+                  <FolderTree className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-semibold text-muted-foreground">Category:</span>
+                  <select
+                    value={selectedCategoryFilter}
+                    onChange={e => setSelectedCategoryFilter(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer max-w-[180px]"
+                  >
+                    <option value="all">All Categories</option>
+                    {categoriesList.filter(c => c.id !== 'all').map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -566,7 +726,7 @@ const AdminDashboard = () => {
                   </span>
                   <DollarSign className="w-4 h-4 text-emerald-500" />
                 </div>
-                <p className="text-2xl font-bold text-gradient-primary">Rs {(dashboardData.todayRevenue ?? 4850).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-gradient-primary">Rs {(dashboardData?.todayRevenue ?? computedKpis.todayRevenue).toLocaleString()}</p>
                 <div className="flex items-center text-xs text-emerald-500 font-medium">
                   <TrendingUp className="w-3.5 h-3.5 mr-1" /> Counter Sales Today
                 </div>
@@ -577,7 +737,7 @@ const AdminDashboard = () => {
                   <span className="text-xs font-semibold uppercase">Completed Transactions</span>
                   <ShoppingBag className="w-4 h-4 text-primary" />
                 </div>
-                <p className="text-2xl font-bold">{dashboardData.todayOrderCount ?? dashboardData.totalOrders ?? 42}</p>
+                <p className="text-2xl font-bold">{dashboardData?.todayOrderCount ?? dashboardData?.totalOrders ?? computedKpis.todayOrderCount}</p>
                 <div className="text-xs text-muted-foreground font-medium">
                   {selectedCashierFilter === 'all' ? 'All Staff Sales' : `By ${selectedCashierFilter}`}
                 </div>
@@ -588,7 +748,7 @@ const AdminDashboard = () => {
                   <span className="text-xs font-semibold uppercase">Low Stock Alerts</span>
                   <AlertTriangle className="w-4 h-4 text-orange-500" />
                 </div>
-                <p className="text-2xl font-bold text-orange-500">{dashboardData.lowStockCount ?? 3}</p>
+                <p className="text-2xl font-bold text-orange-500">{dashboardData?.lowStockCount ?? computedKpis.lowStockCount}</p>
                 <div className="text-xs text-orange-500 font-medium">Items with &le; 5 stock left</div>
               </div>
 
@@ -597,13 +757,13 @@ const AdminDashboard = () => {
                   <span className="text-xs font-semibold uppercase">Monthly Revenue</span>
                   <BarChart3 className="w-4 h-4 text-blue-500" />
                 </div>
-                <p className="text-2xl font-bold">Rs {(dashboardData.monthlyRevenue ?? 128500).toLocaleString()}</p>
+                <p className="text-2xl font-bold">Rs {(dashboardData?.monthlyRevenue ?? computedKpis.monthlyRevenue).toLocaleString()}</p>
                 <div className="text-xs text-muted-foreground font-medium">This Month Total</div>
               </div>
             </div>
 
             {/* Employee Performance Breakdown Card */}
-            {dashboardData.cashierPerformance && dashboardData.cashierPerformance.length > 0 && (
+            {dashboardData?.cashierPerformance && dashboardData.cashierPerformance.length > 0 && (
               <div className="bg-card rounded-2xl border p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-base flex items-center gap-2">
@@ -647,7 +807,7 @@ const AdminDashboard = () => {
                 <h3 className="font-bold text-base">Weekly Sales Trend</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dashboardData.salesTrend ?? mockStats.salesTrend}>
+                    <BarChart data={dashboardData?.salesTrend?.length ? dashboardData.salesTrend : []}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
                       <XAxis dataKey="day" axisLine={false} tickLine={false} />
                       <YAxis axisLine={false} tickLine={false} />
@@ -665,7 +825,7 @@ const AdminDashboard = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={dashboardData.categoryPerformance ?? mockStats.categoryPerformance}
+                        data={categoryPerformance}
                         cx="50%"
                         cy="50%"
                         innerRadius={50}
@@ -673,7 +833,7 @@ const AdminDashboard = () => {
                         paddingAngle={4}
                         dataKey="value"
                       >
-                        {(dashboardData.categoryPerformance ?? mockStats.categoryPerformance).map((_, i) => (
+                        {(categoryPerformance).map((_, i) => (
                           <Cell key={i} fill={COLORS[i % COLORS.length]} />
                         ))}
                       </Pie>
@@ -683,7 +843,7 @@ const AdminDashboard = () => {
                 </div>
                 {/* Category legend list */}
                 <div className="space-y-1.5">
-                  {(dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown).map((cp: any, i: number) => (
+                  {(visibleCategoryBreakdown).map((cp: any, i: number) => (
                     <div key={cp.name} className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
@@ -715,8 +875,8 @@ const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {(dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown).map((cp: any, i: number) => {
-                      const totalRev = (dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown)
+                    {(visibleCategoryBreakdown).map((cp: any, i: number) => {
+                      const totalRev = (visibleCategoryBreakdown)
                         .reduce((s: number, x: any) => s + (x.revenue ?? 0), 0);
                       const rev = cp.revenue ?? 0;
                       const pct = totalRev > 0 ? (rev / totalRev) * 100 : 0;
@@ -748,7 +908,7 @@ const AdminDashboard = () => {
                       );
                     })}
                     {(() => {
-                      const breakdown = dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown;
+                      const breakdown = visibleCategoryBreakdown;
                       const totalRev = breakdown.reduce((s: number, x: any) => s + (x.revenue ?? 0), 0);
                       const totalUnits = breakdown.reduce((s: number, x: any) => s + (x.unitsSold ?? 0), 0);
                       const totalOrders = breakdown.reduce((s: number, x: any) => s + (x.orderCount ?? 0), 0);
@@ -1010,6 +1170,20 @@ const AdminDashboard = () => {
                     ))}
                   </select>
                 </div>
+                <div className="flex items-center gap-2 bg-card border px-3 py-2 rounded-xl shadow-sm">
+                  <FolderTree className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-semibold text-muted-foreground">Category:</span>
+                  <select
+                    value={selectedCategoryFilter}
+                    onChange={e => setSelectedCategoryFilter(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer max-w-[180px]"
+                  >
+                    <option value="all">All Categories</option>
+                    {categoriesList.filter(c => c.id !== 'all').map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1086,7 +1260,7 @@ const AdminDashboard = () => {
                   <p className="text-center py-12 text-sm text-muted-foreground">
                     No orders found
                     {selectedCashierFilter !== 'all' ? ` for cashier "${selectedCashierFilter}"` : ''}
-                    {selectedCategoryFilter !== 'all' ? ` in "${selectedCategoryFilter}" category` : ''}.
+                    {selectedCategoryFilter !== 'all' ? ` in "${categoriesList.find(c => c.id === selectedCategoryFilter)?.name || selectedCategoryFilter}" category` : ''}.
                     Try adjusting filters.
                   </p>
                 ) : (
@@ -1106,6 +1280,11 @@ const AdminDashboard = () => {
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {new Date(order.createdAt).toLocaleString()} • {order.paymentMethod || 'Cash'} • <span className="font-semibold text-primary">Cashier: {order.cashierName || 'Staff'}</span>
                         </p>
+                        {order.items?.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {order.items.map((item: any) => `${item.productName || item.product?.name || 'Item'} ×${item.quantity}`).join(' • ')}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-4">
@@ -1160,31 +1339,47 @@ const AdminDashboard = () => {
         {/* REPORTS TAB */}
         {activeTab === 'reports' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                   <FileText className="w-6 h-6 text-primary" /> Financial & Sales Reports
                 </h1>
                 <p className="text-muted-foreground text-sm">Consolidated summaries of counter revenue, inventory turnover and staff sales.</p>
               </div>
-              <button
-                onClick={() => window.print()}
-                className="h-10 px-4 rounded-xl border font-bold text-xs flex items-center gap-2 hover:bg-muted transition-colors"
-              >
-                <Printer className="w-4 h-4" /> Print Report
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2 bg-card border px-3 py-2 rounded-xl shadow-sm">
+                  <FolderTree className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-semibold text-muted-foreground">Category:</span>
+                  <select
+                    value={selectedCategoryFilter}
+                    onChange={e => setSelectedCategoryFilter(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer max-w-[180px]"
+                  >
+                    <option value="all">All Categories</option>
+                    {categoriesList.filter(c => c.id !== 'all').map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => window.print()}
+                  className="h-10 px-4 rounded-xl border font-bold text-xs flex items-center gap-2 hover:bg-muted transition-colors"
+                >
+                  <Printer className="w-4 h-4" /> Print Report
+                </button>
+              </div>
             </div>
 
             {/* Reports Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-card rounded-2xl border p-5 space-y-2">
                 <span className="text-xs text-muted-foreground uppercase font-semibold">Total Cumulative Sales</span>
-                <p className="text-2xl font-bold text-primary">Rs {(dashboardData.todayRevenue ?? 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-primary">Rs {(dashboardData?.todayRevenue ?? computedKpis.todayRevenue).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground">Today's recorded sales</p>
               </div>
               <div className="bg-card rounded-2xl border p-5 space-y-2">
                 <span className="text-xs text-muted-foreground uppercase font-semibold">Monthly Total Revenue</span>
-                <p className="text-2xl font-bold text-emerald-600">Rs {(dashboardData.monthlyRevenue ?? 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-emerald-600">Rs {(dashboardData?.monthlyRevenue ?? computedKpis.monthlyRevenue).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground">Month-to-date total</p>
               </div>
               <div className="bg-card rounded-2xl border p-5 space-y-2">
@@ -1215,8 +1410,8 @@ const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {(dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown).map((cp: any, i: number) => {
-                      const totalRev = (dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown)
+                    {(visibleCategoryBreakdown).map((cp: any, i: number) => {
+                      const totalRev = (visibleCategoryBreakdown)
                         .reduce((s: number, x: any) => s + (x.revenue ?? 0), 0);
                       const rev = cp.revenue ?? 0;
                       const avgPerOrder = cp.orderCount > 0 ? rev / cp.orderCount : 0;
@@ -1244,7 +1439,7 @@ const AdminDashboard = () => {
                       );
                     })}
                     {(() => {
-                      const breakdown = dashboardData.categorySalesBreakdown ?? mockStats.categorySalesBreakdown;
+                      const breakdown = visibleCategoryBreakdown;
                       const totalRev = breakdown.reduce((s: number, x: any) => s + (x.revenue ?? 0), 0);
                       const totalUnits = breakdown.reduce((s: number, x: any) => s + (x.unitsSold ?? 0), 0);
                       const totalOrders = breakdown.reduce((s: number, x: any) => s + (x.orderCount ?? 0), 0);
@@ -1264,6 +1459,32 @@ const AdminDashboard = () => {
               </div>
             </div>
 
+            {selectedCategoryFilter !== 'all' && (
+              <div className="bg-card rounded-2xl border p-6 space-y-3">
+                <h3 className="font-bold text-base">
+                  {categoriesList.find(c => c.id === selectedCategoryFilter)?.name || selectedCategoryFilter} sales
+                </h3>
+                {filteredOrdersList.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">No sales found for this category in the selected date range.</p>
+                ) : (
+                  filteredOrdersList.map((order: any) => (
+                    <div key={order.id} className="flex justify-between items-center p-4 rounded-xl border bg-muted/20 text-sm">
+                      <div>
+                        <p className="font-bold">{order.orderNumber}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {new Date(order.createdAt).toLocaleString()} • {order.cashierName || 'Staff'}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {(order.items || []).map((item: any) => `${item.productName || 'Item'} ×${item.quantity}`).join(' • ')}
+                        </p>
+                      </div>
+                      <p className="font-bold text-primary">Rs {Number(order.total ?? 0).toLocaleString()}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
             {/* Cashier Audit Table */}
             <div className="bg-card rounded-2xl border p-6 space-y-4">
               <h3 className="font-bold text-base flex items-center gap-2">
@@ -1281,7 +1502,7 @@ const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {(dashboardData.cashierPerformance && dashboardData.cashierPerformance.length > 0) ? (
+                    {(dashboardData?.cashierPerformance && dashboardData.cashierPerformance.length > 0) ? (
                       dashboardData.cashierPerformance.map((cp: any) => (
                         <tr key={cp.cashier} className="hover:bg-muted/20">
                           <td className="p-3 font-bold">{cp.cashier}</td>

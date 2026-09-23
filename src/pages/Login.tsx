@@ -67,7 +67,7 @@ const Login = () => {
           navigate('/admin');
           return;
         }
-        if (role === 'employee' && (email === 'staff@tuckshop.com' || email === 'cashier@tuckshop.com') && password === 'emp123') {
+        if (role === 'employee' && (email === 'staff@tuckshop.com' || email === 'cashier@tuckshop.com') && (password === 'emp123' || password === 'cash123')) {
           setIsBackendConnected(false);
           login(email, password, 'employee', email === 'cashier@tuckshop.com' ? 'Cashier' : 'Staff');
           navigate('/order');
@@ -83,7 +83,7 @@ const Login = () => {
         navigate('/admin');
         return;
       }
-      if (role === 'employee' && (email === 'staff@tuckshop.com' || email === 'cashier@tuckshop.com') && password === 'emp123') {
+      if (role === 'employee' && (email === 'staff@tuckshop.com' || email === 'cashier@tuckshop.com') && (password === 'emp123' || password === 'cash123')) {
         setIsBackendConnected(false);
         login(email, password, 'employee', email === 'cashier@tuckshop.com' ? 'Cashier' : 'Staff');
         navigate('/order');

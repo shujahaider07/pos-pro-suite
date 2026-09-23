@@ -46,7 +46,19 @@ public class ProductsController : ControllerBase
             .OrderBy(p => p.Name)
             .ToListAsync();
 
-        return Ok(products);
+        return Ok(products.Select(p => new
+        {
+            id = p.Id,
+            name = p.Name,
+            price = p.Price,
+            category = p.CategoryId,
+            categoryId = p.CategoryId,
+            subcategory = p.Subcategory,
+            image = p.Image,
+            available = p.Available,
+            stockQuantity = p.StockQuantity,
+            barcode = p.Barcode
+        }));
     }
 
     [HttpPost]
