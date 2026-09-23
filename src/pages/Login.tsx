@@ -170,11 +170,11 @@ const Login = () => {
                   onClick={() => {
                     setRole(r);
                     if (r === 'admin') {
-                      setEmail('admin@tuckshop.com');
-                      setPassword('admin123');
+                      setEmail('');
+                      setPassword('');
                     } else {
-                      setEmail('staff@tuckshop.com');
-                      setPassword('emp123');
+                      setEmail('cashier@tuckshop.com');
+                      setPassword('cash123');
                     }
                   }}
                   className={`flex-1 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center justify-center gap-1.5 ${
@@ -224,7 +224,7 @@ const Login = () => {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder={role === 'admin' ? 'admin@tuckshop.com' : 'staff@tuckshop.com'}
+                placeholder={role === 'admin' ? 'Enter admin email' : 'cashier@tuckshop.com'}
                 className="w-full h-11 px-4 rounded-xl border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                 required
               />
@@ -263,23 +263,19 @@ const Login = () => {
                 />
                 <span className="text-muted-foreground">Keep me signed in</span>
               </label>
-              <button
-                type="button"
-                onClick={() => {
-                  if (role === 'admin') {
-                    setEmail('admin@tuckshop.com');
-                    setPassword('admin123');
-                    setInfoMsg('Demo Admin credentials loaded.');
-                  } else {
-                    setEmail('staff@tuckshop.com');
-                    setPassword('emp123');
-                    setInfoMsg('Demo Staff credentials loaded.');
-                  }
-                }}
-                className="text-primary font-medium hover:underline"
-              >
-                Load Demo Credentials
-              </button>
+              {role === 'employee' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('cashier@tuckshop.com');
+                    setPassword('cash123');
+                    setInfoMsg('Staff credentials loaded.');
+                  }}
+                  className="text-primary font-medium hover:underline"
+                >
+                  Fill Staff Credentials
+                </button>
+              )}
             </div>
 
             {/* Submit */}
