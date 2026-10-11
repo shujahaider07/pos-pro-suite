@@ -83,8 +83,8 @@ const AdminDashboard = () => {
   const [newProduct, setNewProduct] = useState({
     name: '',
     price: 50,
-    category: 'snacks',
-    subcategory: 'Chips',
+    category: '',
+    subcategory: '',
     image: '📦',
     available: true,
     stockQuantity: 50,
@@ -306,6 +306,17 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (fetchedCategories && fetchedCategories.length > 0) {
       setCategoriesList(fetchedCategories);
+      setNewProduct(prev => {
+        if (!prev.category) {
+          const first = fetchedCategories.find(c => c.id !== 'all') || fetchedCategories[0];
+          return {
+            ...prev,
+            category: first ? first.id : '',
+            subcategory: first?.subcategories?.[0] || '',
+          };
+        }
+        return prev;
+      });
     }
   }, [fetchedCategories]);
 
@@ -456,14 +467,37 @@ const AdminDashboard = () => {
     return list;
   }, [productsList, selectedProductCategory, productSearch]);
 
+  const openAddProductModal = () => {
+    const validCategories = categoriesList.filter(c => c.id !== 'all');
+    const firstCat = validCategories[0];
+    const defaultCatId = firstCat ? firstCat.id : '';
+    const defaultSub = firstCat?.subcategories?.[0] || '';
+    setNewProduct({
+      name: '',
+      price: 50,
+      category: defaultCatId,
+      subcategory: defaultSub,
+      image: '📦',
+      available: true,
+      stockQuantity: 50,
+      barcode: '',
+    });
+    setShowAddProductModal(true);
+  };
+
   const handleCreateProduct = async () => {
     if (!newProduct.name.trim() || newProduct.price <= 0) {
       toast.error('Please provide a valid product name and price.');
       return;
     }
+    const validCategories = categoriesList.filter(c => c.id !== 'all');
+    const chosenCategory = newProduct.category || validCategories[0]?.id || '';
     // Auto-generate a valid barcode if none entered
     const finalProduct = {
       ...newProduct,
+      category: chosenCategory,
+      categoryId: chosenCategory,
+      subcategory: newProduct.subcategory?.trim() || '',
       barcode: newProduct.barcode?.trim() || generateBarcode(Date.now()),
     };
     try {
@@ -492,7 +526,17 @@ const AdminDashboard = () => {
       }
     }
     setShowAddProductModal(false);
-    setNewProduct({ name: '', price: 50, category: 'snacks', subcategory: 'Chips', image: '📦', available: true, stockQuantity: 50, barcode: '' });
+    const firstCat = validCategories[0];
+    setNewProduct({
+      name: '',
+      price: 50,
+      category: firstCat ? firstCat.id : '',
+      subcategory: firstCat?.subcategories?.[0] || '',
+      image: '📦',
+      available: true,
+      stockQuantity: 50,
+      barcode: '',
+    });
   };
 
   const handleUpdateProduct = async () => {
@@ -941,7 +985,7 @@ const AdminDashboard = () => {
                 <p className="text-muted-foreground text-sm">Manage tuck shop items, live stock units & barcodes.</p>
               </div>
               <button
-                onClick={() => setShowAddProductModal(true)}
+                onClick={openAddProductModal}
                 className="h-11 px-4 rounded-xl gradient-primary text-primary-foreground font-semibold flex items-center gap-2 shadow-soft hover:opacity-90 transition-opacity"
               >
                 <Plus className="w-4 h-4" /> Add New Item
@@ -1778,7 +1822,12 @@ const AdminDashboard = () => {
                   <label className="block text-muted-foreground mb-1">Category</label>
                   <select
                     value={newProduct.category}
-                    onChange={e => setNewProduct(p => ({ ...p, category: e.target.value }))}
+                    onChange={e => {
+                      const newCatId = e.target.value;
+                      const catObj = categoriesList.find(c => c.id === newCatId);
+                      const firstSub = catObj?.subcategories?.[0] || '';
+                      setNewProduct(p => ({ ...p, category: newCatId, subcategory: firstSub }));
+                    }}
                     className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none capitalize"
                   >
                     {categoriesList.filter(c => c.id !== 'all').map(c => (
@@ -1787,14 +1836,44 @@ const AdminDashboard = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-muted-foreground mb-1">Emoji Icon</label>
-                  <input
-                    type="text"
-                    value={newProduct.image}
-                    onChange={e => setNewProduct(p => ({ ...p, image: e.target.value }))}
-                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none text-center"
-                  />
+                  <label className="block text-muted-foreground mb-1">Subcategory</label>
+                  {(() => {
+                    const currentCat = categoriesList.find(c => c.id === newProduct.category);
+                    const subs = currentCat?.subcategories || [];
+                    if (subs.length > 0) {
+                      return (
+                        <select
+                          value={newProduct.subcategory}
+                          onChange={e => setNewProduct(p => ({ ...p, subcategory: e.target.value }))}
+                          className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                        >
+                          <option value="">None / General</option>
+                          {subs.map(sub => (
+                            <option key={sub} value={sub}>{sub}</option>
+                          ))}
+                        </select>
+                      );
+                    }
+                    return (
+                      <input
+                        type="text"
+                        value={newProduct.subcategory}
+                        onChange={e => setNewProduct(p => ({ ...p, subcategory: e.target.value }))}
+                        placeholder="Optional subcategory"
+                        className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                      />
+                    );
+                  })()}
                 </div>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Emoji Icon</label>
+                <input
+                  type="text"
+                  value={newProduct.image}
+                  onChange={e => setNewProduct(p => ({ ...p, image: e.target.value }))}
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none text-center"
+                />
               </div>
             </div>
             <button
@@ -1862,8 +1941,13 @@ const AdminDashboard = () => {
                 <div>
                   <label className="block text-muted-foreground mb-1">Category</label>
                   <select
-                    value={editingProduct.category}
-                    onChange={e => setEditingProduct(p => p ? ({ ...p, category: e.target.value }) : null)}
+                    value={editingProduct.category || editingProduct.categoryId || ''}
+                    onChange={e => {
+                      const newCatId = e.target.value;
+                      const catObj = categoriesList.find(c => c.id === newCatId);
+                      const firstSub = catObj?.subcategories?.[0] || '';
+                      setEditingProduct(p => p ? ({ ...p, category: newCatId, categoryId: newCatId, subcategory: firstSub }) : null);
+                    }}
                     className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none capitalize"
                   >
                     {categoriesList.filter(c => c.id !== 'all').map(c => (
@@ -1872,14 +1956,44 @@ const AdminDashboard = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-muted-foreground mb-1">Emoji Icon</label>
-                  <input
-                    type="text"
-                    value={editingProduct.image}
-                    onChange={e => setEditingProduct(p => p ? ({ ...p, image: e.target.value }) : null)}
-                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none text-center"
-                  />
+                  <label className="block text-muted-foreground mb-1">Subcategory</label>
+                  {(() => {
+                    const currentCat = categoriesList.find(c => c.id === (editingProduct.category || editingProduct.categoryId));
+                    const subs = currentCat?.subcategories || [];
+                    if (subs.length > 0) {
+                      return (
+                        <select
+                          value={editingProduct.subcategory || ''}
+                          onChange={e => setEditingProduct(p => p ? ({ ...p, subcategory: e.target.value }) : null)}
+                          className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                        >
+                          <option value="">None / General</option>
+                          {subs.map(sub => (
+                            <option key={sub} value={sub}>{sub}</option>
+                          ))}
+                        </select>
+                      );
+                    }
+                    return (
+                      <input
+                        type="text"
+                        value={editingProduct.subcategory || ''}
+                        onChange={e => setEditingProduct(p => p ? ({ ...p, subcategory: e.target.value }) : null)}
+                        placeholder="Optional subcategory"
+                        className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                      />
+                    );
+                  })()}
                 </div>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Emoji Icon</label>
+                <input
+                  type="text"
+                  value={editingProduct.image}
+                  onChange={e => setEditingProduct(p => p ? ({ ...p, image: e.target.value }) : null)}
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none text-center"
+                />
               </div>
               <div className="flex items-center gap-2">
                 <input
