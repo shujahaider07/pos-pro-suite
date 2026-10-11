@@ -477,7 +477,7 @@ const AdminDashboard = () => {
     if (inventorySubTab === 'products') {
       list = list.filter(p => !p.productType || p.productType === 'Saleable');
     } else if (inventorySubTab === 'ingredients') {
-      list = list.filter(p => p.productType === 'Ingredient');
+      list = list.filter(p => p.productType === 'RawMaterial');
     }
     if (selectedProductCategory !== 'all') {
       list = list.filter(p => p.category === selectedProductCategory || p.categoryId === selectedProductCategory);
@@ -503,7 +503,7 @@ const AdminDashboard = () => {
       available: true,
       stockQuantity: 50,
       barcode: '',
-      productType: inventorySubTab === 'ingredients' ? 'Ingredient' : 'Saleable',
+      productType: inventorySubTab === 'ingredients' ? 'RawMaterial' : 'Saleable',
     });
     setShowAddProductModal(true);
   };
@@ -708,7 +708,7 @@ const AdminDashboard = () => {
         }),
       });
       if (res.ok) {
-        toast.success('Ingredient added to recipe!');
+        toast.success('Raw material added to recipe!');
         setShowAddRecipeModal(false);
         setNewRecipeIngredientId('');
         setNewRecipeQuantity('1');
@@ -725,7 +725,7 @@ const AdminDashboard = () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/recipe/${recipeItemId}`, { method: 'DELETE' });
       if (res.ok) {
-        toast.success('Ingredient removed from recipe.');
+        toast.success('Raw material removed from recipe.');
         if (selectedRecipeProduct) fetchRecipe(selectedRecipeProduct.id);
       }
     } catch {
@@ -733,7 +733,7 @@ const AdminDashboard = () => {
     }
   };
 
-  const ingredientProducts = productsList.filter(p => p.productType === 'Ingredient');
+  const rawMaterialProducts = productsList.filter(p => p.productType === 'RawMaterial');
 
   // Fetch product IDs that have BOM defined
   const { data: bomProductIds = [] } = useQuery<number[]>({
@@ -1157,7 +1157,7 @@ const AdminDashboard = () => {
                   onClick={openAddProductModal}
                   className="h-11 px-4 rounded-xl gradient-primary text-primary-foreground font-semibold flex items-center gap-2 shadow-soft hover:opacity-90 transition-opacity"
                 >
-                  <Plus className="w-4 h-4" /> {inventorySubTab === 'ingredients' ? 'Add Ingredient' : 'Add New Item'}
+                  <Plus className="w-4 h-4" /> {inventorySubTab === 'ingredients' ? 'Add Raw Material' : 'Add New Item'}
                 </button>
               )}
             </div>
@@ -1166,7 +1166,7 @@ const AdminDashboard = () => {
             <div className="flex gap-2 bg-card border rounded-xl shadow-sm p-1 w-fit">
               {([
                 { id: 'products', label: 'Products' },
-                { id: 'ingredients', label: 'Ingredients' },
+                { id: 'ingredients', label: 'Raw Materials' },
                 { id: 'recipes', label: 'Recipes (BOM)' },
                 { id: 'reports', label: '📊 Reports' },
               ] as const).map(t => (
@@ -1192,7 +1192,7 @@ const AdminDashboard = () => {
                 <div className="bg-card border rounded-2xl p-4 space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Product / Ingredient</label>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Product / Raw Material</label>
                       <Popover open={reportProductOpen} onOpenChange={setReportProductOpen}>
                         <PopoverTrigger asChild>
                           <button
@@ -1205,7 +1205,7 @@ const AdminDashboard = () => {
                                   <span className="shrink-0">{selectedReportProduct.image}</span>
                                   <span className="truncate">
                                     {selectedReportProduct.name}{' '}
-                                    {selectedReportProduct.productType === 'Ingredient' ? '(Ingredient)' : ''}
+                                    {selectedReportProduct.productType === 'RawMaterial' ? '(Raw Material)' : ''}
                                     <span className="text-muted-foreground"> — Stock: {selectedReportProduct.stockQuantity ?? 0}</span>
                                   </span>
                                 </>
@@ -1236,7 +1236,7 @@ const AdminDashboard = () => {
                                     <span className="shrink-0">{p.image}</span>
                                     <span className="flex-1 truncate">{p.name}</span>
                                     <span className="text-[11px] text-muted-foreground shrink-0">
-                                      {p.productType === 'Ingredient' ? '(Ingredient) ' : ''}Stock: {p.stockQuantity ?? 0}
+                                      {p.productType === 'RawMaterial' ? '(Raw Material) ' : ''}Stock: {p.stockQuantity ?? 0}
                                     </span>
                                   </CommandItem>
                                 ))}
@@ -1317,7 +1317,7 @@ const AdminDashboard = () => {
                       <div>
                         <h3 className="font-bold text-lg">{stockReport.productName}</h3>
                         <p className="text-xs text-muted-foreground">
-                          {stockReport.productType === 'Ingredient' ? 'Ingredient / Raw Material' : 'Saleable Item'}
+                          {stockReport.productType === 'RawMaterial' ? 'Raw Material' : 'Saleable Item'}
                           {' • '}
                           {new Date(stockReport.fromDate).toLocaleDateString()} → {new Date(stockReport.toDate).toLocaleDateString()}
                         </p>
@@ -1493,7 +1493,7 @@ const AdminDashboard = () => {
                         onClick={() => { setShowAddRecipeModal(true); setNewRecipeIngredientId(''); setNewRecipeQuantity('1'); }}
                         className="h-9 px-3 rounded-xl gradient-primary text-primary-foreground text-xs font-bold flex items-center gap-1.5"
                       >
-                        <Plus className="w-3.5 h-3.5" /> Add Ingredient
+                        <Plus className="w-3.5 h-3.5" /> Add Raw Material
                       </button>
                     </div>
 
@@ -1501,14 +1501,14 @@ const AdminDashboard = () => {
                       <div className="bg-card rounded-2xl border p-8 text-center">
                         <Boxes className="w-10 h-10 mx-auto text-muted-foreground/50 mb-2" />
                         <p className="text-sm text-muted-foreground">No ingredients in this recipe yet.</p>
-                        <p className="text-xs text-muted-foreground">Click "Add Ingredient" to define what's consumed when this product is sold.</p>
+                        <p className="text-xs text-muted-foreground">Click "Add Raw Material" to define what's consumed when this product is sold.</p>
                       </div>
                     ) : (
                       <div className="bg-card rounded-2xl border overflow-hidden">
                         <table className="w-full text-sm">
                           <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                             <tr>
-                              <th className="text-left p-3">Ingredient</th>
+                              <th className="text-left p-3">Raw Material</th>
                               <th className="text-left p-3">Quantity Used</th>
                               <th className="text-left p-3">Current Stock</th>
                               <th className="text-right p-3">Action</th>
@@ -2363,19 +2363,98 @@ const AdminDashboard = () => {
                   className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
                 >
                   <option value="Saleable">Saleable Item (shown in POS)</option>
-                  <option value="Ingredient">Ingredient / Raw Material (hidden in POS)</option>
+                  <option value="RawMaterial">Raw Material (hidden in POS)</option>
                 </select>
               </div>
+              {newProduct.productType === 'Saleable' && (
+                <>
+                  <div className="grid">
+                    <div>
+                      <label className="block text-muted-foreground mb-1">Price (PKR)</label>
+                      <input
+                        type="number"
+                        value={newProduct.price}
+                        onChange={e => setNewProduct(p => ({ ...p, price: Number(e.target.value) }))}
+                        className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-muted-foreground mb-1 flex justify-between items-center">
+                      <span>Barcode (Optional — auto-generated if blank)</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = generateBarcode(Date.now());
+                          setNewProduct(p => ({ ...p, barcode: next }));
+                          toast.success(`Barcode ${next} auto-generated`);
+                        }}
+                        className="text-[10px] font-bold px-2 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                      >
+                        ⚡ Auto-Generate
+                      </button>
+                    </label>
+                    <input
+                      type="text"
+                      value={newProduct.barcode}
+                      onChange={e => setNewProduct(p => ({ ...p, barcode: e.target.value }))}
+                      placeholder="Scan or enter barcode digits..."
+                      className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none font-mono"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-muted-foreground mb-1">Category</label>
+                      <select
+                        value={newProduct.category}
+                        onChange={e => {
+                          const newCatId = e.target.value;
+                          const catObj = categoriesList.find(c => c.id === newCatId);
+                          const firstSub = catObj?.subcategories?.[0] || '';
+                          setNewProduct(p => ({ ...p, category: newCatId, subcategory: firstSub }));
+                        }}
+                        className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none capitalize"
+                      >
+                        {categoriesList.filter(c => c.id !== 'all').map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-muted-foreground mb-1">Subcategory</label>
+                      {(() => {
+                        const currentCat = categoriesList.find(c => c.id === newProduct.category);
+                        const subs = currentCat?.subcategories || [];
+                        if (subs.length > 0) {
+                          return (
+                            <select
+                              value={newProduct.subcategory}
+                              onChange={e => setNewProduct(p => ({ ...p, subcategory: e.target.value }))}
+                              className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                            >
+                              <option value="">None / General</option>
+                              {subs.map(sub => (
+                                <option key={sub} value={sub}>{sub}</option>
+                              ))}
+                            </select>
+                          );
+                        }
+                        return (
+                          <input
+                            type="text"
+                            value={newProduct.subcategory}
+                            onChange={e => setNewProduct(p => ({ ...p, subcategory: e.target.value }))}
+                            placeholder="Optional subcategory"
+                            className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                          />
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </>
+              )}
+              {/* Stock field always visible */}
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-muted-foreground mb-1">Price (PKR)</label>
-                  <input
-                    type="number"
-                    value={newProduct.price}
-                    onChange={e => setNewProduct(p => ({ ...p, price: Number(e.target.value) }))}
-                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
-                  />
-                </div>
                 <div>
                   <label className="block text-muted-foreground mb-1">Initial Stock</label>
                   <input
@@ -2384,78 +2463,6 @@ const AdminDashboard = () => {
                     onChange={e => setNewProduct(p => ({ ...p, stockQuantity: Number(e.target.value) }))}
                     className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
                   />
-                </div>
-              </div>
-              <div>
-                <label className="block text-muted-foreground mb-1 flex justify-between items-center">
-                  <span>Barcode (Optional — auto-generated if blank)</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = generateBarcode(Date.now());
-                      setNewProduct(p => ({ ...p, barcode: next }));
-                      toast.success(`Barcode ${next} auto-generated`);
-                    }}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                  >
-                    ⚡ Auto-Generate
-                  </button>
-                </label>
-                <input
-                  type="text"
-                  value={newProduct.barcode}
-                  onChange={e => setNewProduct(p => ({ ...p, barcode: e.target.value }))}
-                  placeholder="Scan or enter barcode digits..."
-                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none font-mono"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-muted-foreground mb-1">Category</label>
-                  <select
-                    value={newProduct.category}
-                    onChange={e => {
-                      const newCatId = e.target.value;
-                      const catObj = categoriesList.find(c => c.id === newCatId);
-                      const firstSub = catObj?.subcategories?.[0] || '';
-                      setNewProduct(p => ({ ...p, category: newCatId, subcategory: firstSub }));
-                    }}
-                    className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none capitalize"
-                  >
-                    {categoriesList.filter(c => c.id !== 'all').map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-muted-foreground mb-1">Subcategory</label>
-                  {(() => {
-                    const currentCat = categoriesList.find(c => c.id === newProduct.category);
-                    const subs = currentCat?.subcategories || [];
-                    if (subs.length > 0) {
-                      return (
-                        <select
-                          value={newProduct.subcategory}
-                          onChange={e => setNewProduct(p => ({ ...p, subcategory: e.target.value }))}
-                          className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
-                        >
-                          <option value="">None / General</option>
-                          {subs.map(sub => (
-                            <option key={sub} value={sub}>{sub}</option>
-                          ))}
-                        </select>
-                      );
-                    }
-                    return (
-                      <input
-                        type="text"
-                        value={newProduct.subcategory}
-                        onChange={e => setNewProduct(p => ({ ...p, subcategory: e.target.value }))}
-                        placeholder="Optional subcategory"
-                        className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
-                      />
-                    );
-                  })()}
                 </div>
               </div>
               <div>
@@ -2507,7 +2514,7 @@ const AdminDashboard = () => {
                   className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
                 >
                   <option value="Saleable">Saleable Item (shown in POS)</option>
-                  <option value="Ingredient">Ingredient / Raw Material (hidden in POS)</option>
+                  <option value="RawMaterial">Raw Material (hidden in POS)</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -2648,7 +2655,7 @@ const AdminDashboard = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
           <div className="bg-card rounded-2xl p-6 w-full max-w-md border shadow-float space-y-4">
             <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-bold text-lg">Add Ingredient to Recipe</h3>
+              <h3 className="font-bold text-lg">Add Raw Material to Recipe</h3>
               <button onClick={() => setShowAddRecipeModal(false)} className="p-1 rounded-lg hover:bg-muted">
                 <X className="w-4 h-4" />
               </button>
@@ -2658,14 +2665,14 @@ const AdminDashboard = () => {
             </p>
             <div className="space-y-3 text-xs font-semibold">
               <div>
-                <label className="block text-muted-foreground mb-1">Ingredient</label>
+                <label className="block text-muted-foreground mb-1">Raw Material</label>
                 <select
                   value={newRecipeIngredientId}
                   onChange={e => setNewRecipeIngredientId(e.target.value ? Number(e.target.value) : '')}
                   className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
                 >
-                  <option value="">Select an ingredient...</option>
-                  {ingredientProducts.map(p => (
+                  <option value="">Select a raw material...</option>
+                  {rawMaterialProducts.map(p => (
                     <option key={p.id} value={p.id}>{p.image} {p.name} (Stock: {p.stockQuantity ?? 0})</option>
                   ))}
                 </select>
