@@ -17,9 +17,14 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult> GetProducts([FromQuery] string? categoryId, [FromQuery] string? subcategory, [FromQuery] string? search)
+    public async Task<ActionResult> GetProducts([FromQuery] string? categoryId, [FromQuery] string? subcategory, [FromQuery] string? search, [FromQuery] string? type = "Saleable")
     {
         var query = _context.Products.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(type) && type.ToLower() != "all")
+        {
+            query = query.Where(p => p.ProductType == type);
+        }
 
         if (!string.IsNullOrWhiteSpace(categoryId) && categoryId != "all")
         {
@@ -57,7 +62,8 @@ public class ProductsController : ControllerBase
             image = p.Image,
             available = p.Available,
             stockQuantity = p.StockQuantity,
-            barcode = p.Barcode
+            barcode = p.Barcode,
+            productType = p.ProductType
         }));
     }
 

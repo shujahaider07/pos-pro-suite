@@ -9,6 +9,7 @@ export interface Product {
   available: boolean;
   stockQuantity?: number;
   barcode?: string;
+  productType?: string;
 }
 
 export interface CartItem {

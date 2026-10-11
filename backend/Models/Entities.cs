@@ -23,6 +23,17 @@ public class ProductEntity
     public bool Available { get; set; }
     public int StockQuantity { get; set; } = 0;
     public string? Barcode { get; set; }
+    public string ProductType { get; set; } = "Saleable";
+}
+
+public class RecipeItemEntity
+{
+    public int Id { get; set; }
+    public int ProductId { get; set; }
+    public int IngredientId { get; set; }
+    public decimal Quantity { get; set; }
+    public ProductEntity? Product { get; set; }
+    public ProductEntity? Ingredient { get; set; }
 }
 
 public class CategoryEntity

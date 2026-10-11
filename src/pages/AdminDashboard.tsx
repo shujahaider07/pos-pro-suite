@@ -89,6 +89,7 @@ const AdminDashboard = () => {
     available: true,
     stockQuantity: 50,
     barcode: '',
+    productType: 'Saleable',
   });
 
   // Edit Product State
@@ -99,6 +100,16 @@ const AdminDashboard = () => {
   const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [selectedStockProduct, setSelectedStockProduct] = useState<Product | null>(null);
   const [stockAddAmount, setStockAddAmount] = useState('20');
+
+  // Inventory Sub-Tabs
+  const [inventorySubTab, setInventorySubTab] = useState<'products' | 'ingredients' | 'recipes'>('products');
+
+  // Recipe Management
+  const [selectedRecipeProduct, setSelectedRecipeProduct] = useState<Product | null>(null);
+  const [recipeItems, setRecipeItems] = useState<any[]>([]);
+  const [showAddRecipeModal, setShowAddRecipeModal] = useState(false);
+  const [newRecipeIngredientId, setNewRecipeIngredientId] = useState<number | ''>('');
+  const [newRecipeQuantity, setNewRecipeQuantity] = useState('1');
 
   // Categories State
   const [categoriesList, setCategoriesList] = useState<Category[]>(initialCategories);
@@ -270,7 +281,7 @@ const AdminDashboard = () => {
     queryKey: ['products'],
     queryFn: async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/products`);
+        const res = await fetch(`${API_BASE_URL}/api/products?type=all`);
         if (!res.ok) return initialProducts;
         const data = await res.json();
         return Array.isArray(data) && data.length > 0 ? data : initialProducts;
@@ -457,6 +468,11 @@ const AdminDashboard = () => {
   // Filtered Products
   const filteredProducts = useMemo(() => {
     let list = productsList;
+    if (inventorySubTab === 'products') {
+      list = list.filter(p => !p.productType || p.productType === 'Saleable');
+    } else if (inventorySubTab === 'ingredients') {
+      list = list.filter(p => p.productType === 'Ingredient');
+    }
     if (selectedProductCategory !== 'all') {
       list = list.filter(p => p.category === selectedProductCategory || p.categoryId === selectedProductCategory);
     }
@@ -465,7 +481,7 @@ const AdminDashboard = () => {
       list = list.filter(p => p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q)));
     }
     return list;
-  }, [productsList, selectedProductCategory, productSearch]);
+  }, [productsList, selectedProductCategory, productSearch, inventorySubTab]);
 
   const openAddProductModal = () => {
     const validCategories = categoriesList.filter(c => c.id !== 'all');
@@ -481,6 +497,7 @@ const AdminDashboard = () => {
       available: true,
       stockQuantity: 50,
       barcode: '',
+      productType: inventorySubTab === 'ingredients' ? 'Ingredient' : 'Saleable',
     });
     setShowAddProductModal(true);
   };
@@ -536,6 +553,7 @@ const AdminDashboard = () => {
       available: true,
       stockQuantity: 50,
       barcode: '',
+      productType: 'Saleable',
     });
   };
 
@@ -647,6 +665,104 @@ const AdminDashboard = () => {
       }
       setShowAddStockModal(false);
       toast.success('Stock updated');
+    },
+  });
+
+  // Recipe management functions
+  const fetchRecipe = async (productId: number) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/recipe/${productId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRecipeItems(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      setRecipeItems([]);
+    }
+  };
+
+  const openRecipeManager = (product: Product) => {
+    setSelectedRecipeProduct(product);
+    fetchRecipe(product.id);
+  };
+
+  const addRecipeItem = async () => {
+    if (!selectedRecipeProduct || !newRecipeIngredientId || Number(newRecipeQuantity) <= 0) {
+      toast.error('Please select an ingredient and enter a valid quantity.');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/recipe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: selectedRecipeProduct.id,
+          ingredientId: Number(newRecipeIngredientId),
+          quantity: Number(newRecipeQuantity),
+        }),
+      });
+      if (res.ok) {
+        toast.success('Ingredient added to recipe!');
+        setShowAddRecipeModal(false);
+        setNewRecipeIngredientId('');
+        setNewRecipeQuantity('1');
+        fetchRecipe(selectedRecipeProduct.id);
+      } else {
+        toast.error('Failed to add ingredient to recipe.');
+      }
+    } catch {
+      toast.error('Failed to add ingredient to recipe.');
+    }
+  };
+
+  const deleteRecipeItem = async (recipeItemId: number) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/recipe/${recipeItemId}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Ingredient removed from recipe.');
+        if (selectedRecipeProduct) fetchRecipe(selectedRecipeProduct.id);
+      }
+    } catch {
+      toast.error('Failed to remove ingredient.');
+    }
+  };
+
+  const ingredientProducts = productsList.filter(p => p.productType === 'Ingredient');
+
+  // Fetch product IDs that have BOM defined
+  const { data: bomProductIds = [] } = useQuery<number[]>({
+    queryKey: ['bom-products'],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/recipe`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const hasBom = (productId: number) => bomProductIds.includes(productId);
+
+  // BOM filter for Recipes tab
+  const [bomFilter, setBomFilter] = useState<'all' | 'with-bom' | 'without-bom'>('all');
+
+  // Delete product mutation
+  const deleteProductMutation = useMutation({
+    mutationFn: async (productId: number) => {
+      const res = await fetch(`${API_BASE_URL}/api/products/${productId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['bom-products'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Product deleted successfully.');
+    },
+    onError: () => {
+      toast.error('Failed to delete product.');
     },
   });
 
@@ -982,117 +1098,297 @@ const AdminDashboard = () => {
                 <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                   <Boxes className="w-6 h-6 text-primary" /> Inventory & Products
                 </h1>
-                <p className="text-muted-foreground text-sm">Manage tuck shop items, live stock units & barcodes.</p>
+                <p className="text-muted-foreground text-sm">Manage tuck shop items, ingredients (raw materials), recipes & stock.</p>
               </div>
-              <button
-                onClick={openAddProductModal}
-                className="h-11 px-4 rounded-xl gradient-primary text-primary-foreground font-semibold flex items-center gap-2 shadow-soft hover:opacity-90 transition-opacity"
-              >
-                <Plus className="w-4 h-4" /> Add New Item
-              </button>
+              {inventorySubTab !== 'recipes' && (
+                <button
+                  onClick={openAddProductModal}
+                  className="h-11 px-4 rounded-xl gradient-primary text-primary-foreground font-semibold flex items-center gap-2 shadow-soft hover:opacity-90 transition-opacity"
+                >
+                  <Plus className="w-4 h-4" /> {inventorySubTab === 'ingredients' ? 'Add Ingredient' : 'Add New Item'}
+                </button>
+              )}
             </div>
 
-            {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={productSearch}
-                  onChange={e => setProductSearch(e.target.value)}
-                  placeholder="Search item name or barcode..."
-                  className="w-full h-11 pl-10 pr-4 rounded-xl border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-              <div className="flex gap-2 overflow-x-auto pos-scrollbar pb-1">
+            {/* Sub-Tabs: Products | Ingredients | Recipes */}
+            <div className="flex gap-2 bg-card border rounded-xl shadow-sm p-1 w-fit">
+              {([
+                { id: 'products', label: 'Products' },
+                { id: 'ingredients', label: 'Ingredients' },
+                { id: 'recipes', label: 'Recipes (BOM)' },
+              ] as const).map(t => (
                 <button
-                  onClick={() => setSelectedProductCategory('all')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                    selectedProductCategory === 'all'
-                      ? 'gradient-primary text-primary-foreground'
-                      : 'bg-card border hover:bg-muted text-muted-foreground'
+                  key={t.id}
+                  onClick={() => setInventorySubTab(t.id)}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    inventorySubTab === t.id
+                      ? 'gradient-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                 >
-                  All
+                  {t.label}
                 </button>
-                {categoriesList.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedProductCategory(c.id)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                      selectedProductCategory === c.id
-                        ? 'gradient-primary text-primary-foreground'
-                        : 'bg-card border hover:bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    <span>{c.icon}</span>
-                    <span>{c.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Products Table / Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredProducts.map(p => (
-                <div key={p.id} className="bg-card rounded-2xl border p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center text-2xl">
-                        {p.image || '📦'}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-sm">{p.name}</h4>
-                        <p className="text-xs text-muted-foreground">{p.subcategory || p.category}</p>
-                      </div>
-                    </div>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                      (p.stockQuantity ?? 0) <= 0
-                        ? 'bg-destructive/10 text-destructive'
-                        : (p.stockQuantity ?? 0) <= 5
-                        ? 'bg-orange-500/10 text-orange-500'
-                        : 'bg-emerald-500/10 text-emerald-600'
-                    }`}>
-                      {(p.stockQuantity ?? 0) <= 0 ? 'Out of Stock' : `${p.stockQuantity} in stock`}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center pt-2 border-t text-xs">
-                    <span className="font-mono text-muted-foreground">{p.barcode || 'No Barcode'}</span>
-                    <span className="text-base font-bold text-primary">Rs {p.price}</span>
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => {
-                        setSelectedStockProduct(p);
-                        setShowAddStockModal(true);
-                      }}
-                      className="flex-1 py-2 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add Stock
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingProduct(p);
-                        setShowEditProductModal(true);
-                      }}
-                      title="Edit product"
-                      className="py-2 px-3 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setLabelProduct(p)}
-                      title="Print barcode price labels for this product"
-                      className="py-2 px-3 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
-                    >
-                      <Tag className="w-3.5 h-3.5" /> Labels
-                    </button>
-                  </div>
-                </div>
               ))}
             </div>
+
+            {inventorySubTab === 'recipes' ? (
+              <div className="space-y-4">
+                {!selectedRecipeProduct ? (
+                  <>
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <p className="text-sm text-muted-foreground">Select a saleable product to manage its recipe ingredients (BOM).</p>
+                      <div className="flex gap-1 bg-card border rounded-xl shadow-sm p-1">
+                        {([
+                          { id: 'all', label: 'All Products' },
+                          { id: 'with-bom', label: 'With BOM' },
+                          { id: 'without-bom', label: 'Without BOM' },
+                        ] as const).map(f => (
+                          <button
+                            key={f.id}
+                            onClick={() => setBomFilter(f.id)}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all ${
+                              bomFilter === f.id
+                                ? 'gradient-primary text-primary-foreground shadow-sm'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                            }`}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {productsList
+                        .filter(p => !p.productType || p.productType === 'Saleable')
+                        .filter(p => {
+                          if (bomFilter === 'with-bom') return hasBom(p.id);
+                          if (bomFilter === 'without-bom') return !hasBom(p.id);
+                          return true;
+                        })
+                        .map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => openRecipeManager(p)}
+                          className="bg-card rounded-2xl border p-4 space-y-2 text-left hover:shadow-md transition-shadow hover:border-primary/50 relative"
+                        >
+                          {hasBom(p.id) && (
+                            <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600">
+                              ✓ BOM
+                            </span>
+                          )}
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center text-xl">{p.image || '📦'}</div>
+                            <div>
+                              <h4 className="font-bold text-sm">{p.name}</h4>
+                              <p className="text-xs text-muted-foreground">Rs {p.price}</p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-primary font-medium">Manage Recipe →</p>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => { setSelectedRecipeProduct(null); setRecipeItems([]); }}
+                          className="p-2 rounded-lg border hover:bg-muted"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center text-xl">{selectedRecipeProduct.image || '📦'}</div>
+                        <div>
+                          <h3 className="font-bold">{selectedRecipeProduct.name}</h3>
+                          <p className="text-xs text-muted-foreground">Recipe / Bill of Materials</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => { setShowAddRecipeModal(true); setNewRecipeIngredientId(''); setNewRecipeQuantity('1'); }}
+                        className="h-9 px-3 rounded-xl gradient-primary text-primary-foreground text-xs font-bold flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add Ingredient
+                      </button>
+                    </div>
+
+                    {recipeItems.length === 0 ? (
+                      <div className="bg-card rounded-2xl border p-8 text-center">
+                        <Boxes className="w-10 h-10 mx-auto text-muted-foreground/50 mb-2" />
+                        <p className="text-sm text-muted-foreground">No ingredients in this recipe yet.</p>
+                        <p className="text-xs text-muted-foreground">Click "Add Ingredient" to define what's consumed when this product is sold.</p>
+                      </div>
+                    ) : (
+                      <div className="bg-card rounded-2xl border overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                            <tr>
+                              <th className="text-left p-3">Ingredient</th>
+                              <th className="text-left p-3">Quantity Used</th>
+                              <th className="text-left p-3">Current Stock</th>
+                              <th className="text-right p-3">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {recipeItems.map((ri: any) => (
+                              <tr key={ri.id} className="border-t">
+                                <td className="p-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-lg">{ri.ingredientImage || '📦'}</span>
+                                    <span className="font-medium">{ri.ingredientName}</span>
+                                  </div>
+                                </td>
+                                <td className="p-3 font-mono">{ri.Quantity} units</td>
+                                <td className="p-3">
+                                  <span className={`font-bold ${
+                                    ri.ingredientStock <= 0 ? 'text-destructive' : ri.ingredientStock <= 5 ? 'text-orange-500' : 'text-emerald-600'
+                                  }`}>
+                                    {ri.ingredientStock}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-right">
+                                  <button
+                                    onClick={() => deleteRecipeItem(ri.id)}
+                                    className="text-destructive hover:bg-destructive/10 p-1.5 rounded-lg"
+                                    title="Remove from recipe"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* Filters */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={productSearch}
+                      onChange={e => setProductSearch(e.target.value)}
+                      placeholder={inventorySubTab === 'ingredients' ? "Search ingredient name..." : "Search item name or barcode..."}
+                      className="w-full h-11 pl-10 pr-4 rounded-xl border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pos-scrollbar pb-1">
+                    <button
+                      onClick={() => setSelectedProductCategory('all')}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                        selectedProductCategory === 'all'
+                          ? 'gradient-primary text-primary-foreground'
+                          : 'bg-card border hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      All
+                    </button>
+                    {categoriesList.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => setSelectedProductCategory(c.id)}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                          selectedProductCategory === c.id
+                            ? 'gradient-primary text-primary-foreground'
+                            : 'bg-card border hover:bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        <span>{c.icon}</span>
+                        <span>{c.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Products Table / Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredProducts.map(p => (
+                    <div key={p.id} className="bg-card rounded-2xl border p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center text-2xl">
+                            {p.image || '📦'}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-sm">{p.name}</h4>
+                            <p className="text-xs text-muted-foreground">{p.subcategory || p.category}</p>
+                          </div>
+                        </div>
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                          (p.stockQuantity ?? 0) <= 0
+                            ? 'bg-destructive/10 text-destructive'
+                            : (p.stockQuantity ?? 0) <= 5
+                            ? 'bg-orange-500/10 text-orange-500'
+                            : 'bg-emerald-500/10 text-emerald-600'
+                        }`}>
+                          {(p.stockQuantity ?? 0) <= 0 ? 'Out of Stock' : `${p.stockQuantity} in stock`}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center pt-2 border-t text-xs">
+                        <span className="font-mono text-muted-foreground">{p.barcode || 'No Barcode'}</span>
+                        <span className="text-base font-bold text-primary">Rs {p.price}</span>
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            setSelectedStockProduct(p);
+                            setShowAddStockModal(true);
+                          }}
+                          className="flex-1 py-2 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Stock
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingProduct(p);
+                            setShowEditProductModal(true);
+                          }}
+                          title="Edit product"
+                          className="py-2 px-3 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        {inventorySubTab === 'products' && (
+                          <button
+                            onClick={() => openRecipeManager(p)}
+                            title="Manage recipe / ingredients"
+                            className="py-2 px-3 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
+                          >
+                            📋 Recipe
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setLabelProduct(p)}
+                          title="Print barcode price labels for this product"
+                          className="py-2 px-3 rounded-xl border text-xs font-bold hover:bg-accent text-primary transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Tag className="w-3.5 h-3.5" /> Labels
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete "${p.name}"? This cannot be undone.`)) {
+                              deleteProductMutation.mutate(p.id);
+                            }
+                          }}
+                          title={`Delete ${inventorySubTab === 'ingredients' ? 'ingredient' : 'product'}`}
+                          className="py-2 px-3 rounded-xl border text-xs font-bold hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -1774,6 +2070,17 @@ const AdminDashboard = () => {
                   className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
                 />
               </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Product Type</label>
+                <select
+                  value={newProduct.productType}
+                  onChange={e => setNewProduct(p => ({ ...p, productType: e.target.value }))}
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                >
+                  <option value="Saleable">Saleable Item (shown in POS)</option>
+                  <option value="Ingredient">Ingredient / Raw Material (hidden in POS)</option>
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-muted-foreground mb-1">Price (PKR)</label>
@@ -1907,6 +2214,17 @@ const AdminDashboard = () => {
                   className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
                 />
               </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Product Type</label>
+                <select
+                  value={editingProduct.productType || 'Saleable'}
+                  onChange={e => setEditingProduct(p => p ? ({ ...p, productType: e.target.value }) : null)}
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                >
+                  <option value="Saleable">Saleable Item (shown in POS)</option>
+                  <option value="Ingredient">Ingredient / Raw Material (hidden in POS)</option>
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-muted-foreground mb-1">Price (PKR)</label>
@@ -2038,6 +2356,56 @@ const AdminDashboard = () => {
           product={labelProduct}
           onClose={() => setLabelProduct(null)}
         />
+      )}
+
+      {/* ADD RECIPE INGREDIENT MODAL */}
+      {showAddRecipeModal && selectedRecipeProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md border shadow-float space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-lg">Add Ingredient to Recipe</h3>
+              <button onClick={() => setShowAddRecipeModal(false)} className="p-1 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Adding ingredient to <span className="font-bold text-foreground">{selectedRecipeProduct.name}</span>
+            </p>
+            <div className="space-y-3 text-xs font-semibold">
+              <div>
+                <label className="block text-muted-foreground mb-1">Ingredient</label>
+                <select
+                  value={newRecipeIngredientId}
+                  onChange={e => setNewRecipeIngredientId(e.target.value ? Number(e.target.value) : '')}
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                >
+                  <option value="">Select an ingredient...</option>
+                  {ingredientProducts.map(p => (
+                    <option key={p.id} value={p.id}>{p.image} {p.name} (Stock: {p.stockQuantity ?? 0})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Quantity Used (per sale)</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={newRecipeQuantity}
+                  onChange={e => setNewRecipeQuantity(e.target.value)}
+                  className="w-full h-10 px-3 rounded-xl border bg-muted/40 text-sm focus:outline-none"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">How many units of this ingredient are used when 1 "{selectedRecipeProduct.name}" is sold.</p>
+              </div>
+            </div>
+            <button
+              onClick={addRecipeItem}
+              className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity"
+            >
+              Add to Recipe
+            </button>
+          </div>
+        </div>
       )}
     </AdminSidebar>
   );

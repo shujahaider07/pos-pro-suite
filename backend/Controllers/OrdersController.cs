@@ -174,7 +174,6 @@ public class OrdersController : ControllerBase
         order.Status = "Completed";
         order.CompletedAt = DateTime.UtcNow;
 
-        // Auto-deduct stock for each item sold
         var stockLogs = new List<StockLogEntity>();
         foreach (var item in order.Items)
         {
@@ -192,6 +191,30 @@ public class OrdersController : ControllerBase
                     Reason = "Sale",
                     CreatedAt = DateTime.UtcNow
                 });
+
+                var recipe = await _context.RecipeItems
+                    .Where(r => r.ProductId == product.Id)
+                    .ToListAsync();
+
+                foreach (var recipeItem in recipe)
+                {
+                    var ingredient = await _context.Products.FindAsync(recipeItem.IngredientId);
+                    if (ingredient != null)
+                    {
+                        decimal deductQty = recipeItem.Quantity * item.Quantity;
+                        ingredient.StockQuantity = Math.Max(0, ingredient.StockQuantity - (int)Math.Ceiling(deductQty));
+                        if (ingredient.StockQuantity == 0)
+                            ingredient.Available = false;
+
+                        stockLogs.Add(new StockLogEntity
+                        {
+                            ProductId = ingredient.Id,
+                            QuantityChange = -(int)Math.Ceiling(deductQty),
+                            Reason = $"Sale ({product.Name})",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
             }
         }
 
@@ -247,6 +270,29 @@ public class OrdersController : ControllerBase
                     Reason = $"Return (Order #{order.OrderNumber}) by {request.CashierName ?? "Staff"}",
                     CreatedAt = DateTime.UtcNow
                 });
+
+                var recipe = await _context.RecipeItems
+                    .Where(r => r.ProductId == product.Id)
+                    .ToListAsync();
+
+                foreach (var recipeItem in recipe)
+                {
+                    var ingredient = await _context.Products.FindAsync(recipeItem.IngredientId);
+                    if (ingredient != null)
+                    {
+                        int restoreQty = (int)Math.Ceiling(recipeItem.Quantity * qtyToReturn);
+                        ingredient.StockQuantity += restoreQty;
+                        ingredient.Available = true;
+
+                        stockLogs.Add(new StockLogEntity
+                        {
+                            ProductId = ingredient.Id,
+                            QuantityChange = restoreQty,
+                            Reason = $"Return ({product.Name}) Order #{order.OrderNumber}",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
             }
         }
 

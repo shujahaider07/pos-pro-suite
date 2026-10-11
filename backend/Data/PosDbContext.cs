@@ -15,6 +15,7 @@ public class PosDbContext : DbContext
     public DbSet<OrderEntity> Orders => Set<OrderEntity>();
     public DbSet<OrderItemEntity> OrderItems => Set<OrderItemEntity>();
     public DbSet<StockLogEntity> StockLogs => Set<StockLogEntity>();
+    public DbSet<RecipeItemEntity> RecipeItems => Set<RecipeItemEntity>();
     public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<SettingsEntity> Settings => Set<SettingsEntity>();
 
@@ -34,5 +35,17 @@ public class PosDbContext : DbContext
             .HasOne(s => s.Product)
             .WithMany()
             .HasForeignKey(s => s.ProductId);
+
+        modelBuilder.Entity<RecipeItemEntity>()
+            .HasOne(r => r.Product)
+            .WithMany()
+            .HasForeignKey(r => r.ProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RecipeItemEntity>()
+            .HasOne(r => r.Ingredient)
+            .WithMany()
+            .HasForeignKey(r => r.IngredientId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

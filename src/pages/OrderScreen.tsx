@@ -147,6 +147,7 @@ const OrderScreen = () => {
     queryFn: async () => {
       try {
         const params = new URLSearchParams();
+        params.append('type', 'Saleable');
         if (activeCategory && activeCategory !== 'all') params.append('categoryId', activeCategory);
         if (activeSubcategory) params.append('subcategory', activeSubcategory);
         if (search) params.append('search', search);
@@ -165,6 +166,7 @@ const OrderScreen = () => {
   // Filter products locally
   const displayProducts = useMemo(() => {
     let list = productsFromApi && productsFromApi.length > 0 ? productsFromApi : initialProducts;
+    list = list.filter(p => !p.productType || p.productType === 'Saleable');
     if (activeCategory && activeCategory !== 'all') {
       list = list.filter(p => p.category === activeCategory || p.categoryId === activeCategory);
     }
@@ -231,7 +233,7 @@ const OrderScreen = () => {
       if (!matched) {
         // Fallback: Check backend immediately to avoid race condition during fast scanning
         try {
-          const res = await fetch(`${API_BASE_URL}/api/products?search=${encodeURIComponent(rawQuery)}`);
+          const res = await fetch(`${API_BASE_URL}/api/products?type=Saleable&search=${encodeURIComponent(rawQuery)}`);
           if (res.ok) {
             const data = await res.json();
             const apiMatch = data.find((p: any) => 
