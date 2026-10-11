@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus, RotateCcw, X, User, LogOut } from 'lucide-react';
+import { Search, ShoppingBag, Barcode, Trash2, ArrowLeft, Plus, Minus, RotateCcw, X, User, LogOut, Utensils, Truck } from 'lucide-react';
 import { initialProducts, initialCategories, getStoredTaxRate, type CartItem, type Product, type Category } from '@/lib/mock-data';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/pos-context';
@@ -33,6 +33,12 @@ const OrderScreen = () => {
   const [lastCashReceived, setLastCashReceived] = useState<number | undefined>(undefined);
 
   // Custom Item Modal State
+  // ----- New Table & Service Flow State -----
+  const [showServiceModal, setShowServiceModal] = useState(false);
+  const [serviceType, setServiceType] = useState<'DineIn' | 'Takeaway' | 'Delivery' | null>(null);
+  const [showTableModal, setShowTableModal] = useState(false);
+  const [selectedTable, setSelectedTable] = useState<number | null>(null);
+  const [pendingCategoryId, setPendingCategoryId] = useState<string | null>(null);
   const [showCustomItemModal, setShowCustomItemModal] = useState(false);
   const [customItemName, setCustomItemName] = useState('');
   const [customItemPrice, setCustomItemPrice] = useState('');
@@ -374,6 +380,13 @@ const OrderScreen = () => {
             <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center text-primary-foreground font-bold shadow-soft">
               🏪
             </div>
+          {/* Service & Table Info */}
+          {serviceType && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-muted/30 border border-muted/50 text-xs font-medium text-muted-foreground">
+              <span>{serviceType}</span>
+              {serviceType === 'DineIn' && selectedTable && <span>Table {selectedTable}</span>}
+            </div>
+          )}
             <div>
               <span className="font-bold text-base leading-none block">LIP SIP MART</span>
               <span className="text-[10px] text-muted-foreground">Counter Sales</span>
@@ -450,9 +463,14 @@ const OrderScreen = () => {
             <button
               key={cat.id}
               onClick={() => {
-                setActiveCategory(cat.id);
-                setActiveSubcategory(null);
-                focusSearchInput();
+                if (serviceType) {
+                  setActiveCategory(cat.id);
+                  setActiveSubcategory(null);
+                  focusSearchInput();
+                } else {
+                  setPendingCategoryId(cat.id);
+                  setShowServiceModal(true);
+                }
               }}
               className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
                 activeCategory === cat.id
@@ -783,8 +801,109 @@ const OrderScreen = () => {
           }}
         />
       )}
+
+      {/* Service Modal */}
+      {showServiceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl shadow-float w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-bold text-lg">Select Service Type</h3>
+              <button onClick={() => { setShowServiceModal(false); focusSearchInput(); }} className="p-2 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <button
+                onClick={() => {
+                  setShowServiceModal(false);
+                  setServiceType('DineIn');
+                  setShowTableModal(true);
+                }}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-transparent hover:border-primary/40 hover:bg-accent/50 transition-all"
+              >
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white">
+                  <Utensils className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="font-bold">Dine In</p>
+                  <p className="text-xs text-muted-foreground">Sit at a table</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => { setServiceType('Takeaway'); setShowServiceModal(false); }}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-transparent hover:border-primary/40 hover:bg-accent/50 transition-all"
+              >
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white">
+                  <ShoppingBag className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="font-bold">Takeaway</p>
+                  <p className="text-xs text-muted-foreground">Pick up and go</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => { setServiceType('Delivery'); setShowServiceModal(false); }}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-transparent hover:border-primary/40 hover:bg-accent/50 transition-all"
+              >
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white">
+                  <Truck className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="font-bold">Delivery</p>
+                  <p className="text-xs text-muted-foreground">Deliver to customer</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Table Modal */}
+      {showTableModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl shadow-float w-full max-w-[90vh] mx-4">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-bold text-lg">Select a Table (10 Tables)</h3>
+              <button onClick={() => { setShowTableModal(false); focusSearchInput(); }} className="p-2 rounded-lg hover:bg-muted">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                {Array.from({ length: 10 }, (_, i) => {
+                  const tableId = i + 1;
+                  const status = tableId <= 3 ? 'occupied' : tableId <= 8 ? 'reserved' : 'available';
+                  return (
+                    <button
+                      key={tableId}
+                      onClick={() => {
+                        setSelectedTable(tableId);
+                        setShowTableModal(false);
+                        setActiveCategory(pendingCategoryId || 'all');
+                        setActiveSubcategory(null);
+                        setShowServiceModal(false);
+                        focusSearchInput();
+                      }}
+                      className="bg-card rounded-2xl border-2 p-4 cursor-pointer transition-all duration-300 hover:shadow-elevated hover:scale-[1.02] active:scale-[0.98] border-gray-300"
+                    >
+                      <h3 className="text-xl font-bold">{tableId}</h3>
+                      <div className="text-xs text-muted-foreground">Table {tableId} &middot; {status}</div>
+                      {status === 'occupied' && <div className="text-xs text-orange-600">Order #1000{tableId}</div>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default OrderScreen;
+
