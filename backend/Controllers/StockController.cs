@@ -109,7 +109,7 @@ public class StockController : ControllerBase
 
     /// <summary>Stock history log</summary>
     [HttpGet("logs")]
-    public async Task<ActionResult> GetStockLogs([FromQuery] int? productId, [FromQuery] int take = 50)
+    public async Task<ActionResult> GetStockLogs([FromQuery] int? productId, [FromQuery] int take = 50, [FromQuery] DateTime? fromDate = null, [FromQuery] DateTime? toDate = null)
     {
         var query = _context.StockLogs
             .Include(s => s.Product)
@@ -118,13 +118,21 @@ public class StockController : ControllerBase
         if (productId.HasValue)
             query = query.Where(s => s.ProductId == productId.Value);
 
+        if (fromDate.HasValue)
+            query = query.Where(s => s.CreatedAt >= fromDate.Value);
+
+        if (toDate.HasValue)
+            query = query.Where(s => s.CreatedAt <= toDate.Value);
+
         var logs = await query
             .OrderByDescending(s => s.CreatedAt)
             .Take(take)
             .Select(s => new
             {
                 s.Id,
+                s.ProductId,
                 productName = s.Product != null ? s.Product.Name : $"Product #{s.ProductId}",
+                productImage = s.Product != null ? s.Product.Image : "📦",
                 s.QuantityChange,
                 s.Reason,
                 s.CreatedAt
@@ -132,5 +140,57 @@ public class StockController : ControllerBase
             .ToListAsync();
 
         return Ok(logs);
+    }
+
+    /// <summary>Inventory report for a product with date range — opening, in, out, net, current stock + logs</summary>
+    [HttpGet("report")]
+    public async Task<ActionResult> GetStockReport([FromQuery] int productId, [FromQuery] DateTime? fromDate = null, [FromQuery] DateTime? toDate = null)
+    {
+        var product = await _context.Products.FindAsync(productId);
+        if (product == null)
+            return NotFound($"Product with id {productId} not found.");
+
+        var startOfDay = fromDate.HasValue ? fromDate.Value.Date : DateTime.UtcNow.Date.AddDays(-7);
+        var endOfDay = toDate.HasValue ? toDate.Value.Date.AddDays(1).AddTicks(-1) : DateTime.UtcNow;
+
+        // Opening stock = sum of all changes before fromDate
+        var openingStock = await _context.StockLogs
+            .Where(s => s.ProductId == productId && s.CreatedAt < startOfDay)
+            .SumAsync(s => (int?)s.QuantityChange) ?? 0;
+
+        // Logs in range
+        var logsQuery = _context.StockLogs
+            .Where(s => s.ProductId == productId && s.CreatedAt >= startOfDay && s.CreatedAt <= endOfDay);
+
+        var totalIn = await logsQuery.Where(s => s.QuantityChange > 0).SumAsync(s => (int?)s.QuantityChange) ?? 0;
+        var totalOut = await logsQuery.Where(s => s.QuantityChange < 0).SumAsync(s => (int?)s.QuantityChange) ?? 0;
+
+        var logs = await logsQuery
+            .OrderByDescending(s => s.CreatedAt)
+            .Select(s => new
+            {
+                s.Id,
+                s.QuantityChange,
+                s.Reason,
+                s.CreatedAt,
+                type = s.QuantityChange > 0 ? "In" : "Out"
+            })
+            .ToListAsync();
+
+        return Ok(new
+        {
+            productId = product.Id,
+            productName = product.Name,
+            productImage = product.Image,
+            productType = product.ProductType,
+            fromDate = startOfDay,
+            toDate = endOfDay,
+            openingStock,
+            totalIn,
+            totalOut,
+            netChange = totalIn + totalOut,
+            currentStock = product.StockQuantity,
+            logs
+        });
     }
 }

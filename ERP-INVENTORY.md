@@ -1,4 +1,4 @@
-# TuckShop POS — Small ERP Inventory (Recipe / BOM) System
+# TuckShop POS — Small ERP Inventory (Recipe / BOM + Stock Reports)
 
 ## Overview
 
@@ -80,6 +80,47 @@ Default `type=Saleable`. Response mein `productType` field bhi aati hai.
 
 > Agar same product-ingredient pair already exist karta hai toh quantity add ho jati hai (merge).
 
+### Stock Logs (with date filter)
+
+```
+GET /api/stock/logs?productId=6&take=50&fromDate=2026-10-01&toDate=2026-10-11
+```
+
+`fromDate` aur `toDate` optional hain. Response mein har log ke saath `productId`, `productName`, `productImage`, `quantityChange`, `reason`, `createdAt` aata hai.
+
+### Stock Report (per product)
+
+```
+GET /api/stock/report?productId=6&fromDate=2026-10-04&toDate=2026-10-11
+```
+
+Date range ke mutabiq product ka complete inventory report return karta hai:
+
+```json
+{
+  "productId": 6,
+  "productName": "Coca Cola 500ml",
+  "productImage": "🥤",
+  "productType": "Saleable",
+  "fromDate": "2026-10-04T00:00:00Z",
+  "toDate": "2026-10-11T23:59:59Z",
+  "openingStock": 40,
+  "totalIn": 10,
+  "totalOut": 3,
+  "netChange": 7,
+  "currentStock": 47,
+  "logs": [
+    { "id": 1, "quantityChange": -1, "reason": "Sale", "createdAt": "...", "type": "Out" }
+  ]
+}
+```
+
+- **Opening stock** = `fromDate` se pehle ke saare stock changes ka sum
+- **totalIn** = range mein +ve changes
+- **totalOut** = range mein -ve changes
+- **netChange** = `totalIn + totalOut`
+- `fromDate`/`toDate` optional — default last 7 days
+
 ---
 
 ## Stock Deduction Logic
@@ -110,9 +151,9 @@ Return par reverse process:
 
 ## Frontend UI
 
-### Inventory Tab — 3 Sub-Tabs
+### Inventory Tab — 4 Sub-Tabs
 
-Admin Dashboard → Inventory ke andar 3 sub-tabs hain:
+Admin Dashboard → Inventory ke andar 4 sub-tabs hain:
 
 #### 1. Products 📦
 - Saleable products ki grid
@@ -126,10 +167,20 @@ Admin Dashboard → Inventory ke andar 3 sub-tabs hain:
 
 #### 3. Recipes (BOM) 📋
 - Sab saleable products ki list dikhti hai
+- **Search box** se product name filter kar sakte ho
+- BOM filter buttons: All Products / With BOM / Without BOM
 - Koi bhi product select karo → uski recipe manage karo
 - "Add Ingredient" → ingredient dropdown + quantity input
 - Table mein ingredient name, quantity used, current stock dikhta hai
 - Delete button se ingredient recipe se hatao
+
+#### 4. Reports 📊
+- Kisi bhi product ya ingredient ka full stock movement report dekho
+- **Searchable product selector** (type kar ke product dhoondo — dropdown mein live filter)
+- Date range presets: Today / Yesterday / 7 Days / 30 Days / Custom (From–To)
+- Summary cards: Opening Stock, Stock In, Stock Out, Net Change, Current Stock
+- Stock Movement History table (Date & Time, Type ↗IN/↘OUT, Reason, Quantity)
+- Har date range change par backend se fresh data aata hai
 
 ### Product Add/Edit Modal
 - Naya **"Product Type"** dropdown added:
@@ -139,6 +190,12 @@ Admin Dashboard → Inventory ke andar 3 sub-tabs hain:
 ### POS Screen (`OrderScreen`)
 - Sirf `Saleable` products dikhte hain
 - Ingredients POS pe kabhi nahi dikhte (backend `type=Saleable` filter + frontend client-side filter)
+
+### Responsive UI
+- Reports tab: date range buttons `flex-wrap` + `min-w` se mobile par wrap hote hain
+- Custom date inputs mobile par stacked, desktop par side-by-side
+- Logs table horizontal scrollable (`min-w-[420px]`)
+- Summary cards `grid-cols-2 md:grid-cols-5`
 
 ---
 
@@ -190,6 +247,7 @@ Dashboard "Low Stock Alerts" KPI mein ingredients bhi count hote hain.
 | `backend/Controllers/RecipeController.cs` | **New** — Recipe CRUD |
 | `backend/Controllers/OrdersController.cs` | Recipe-based stock deduction (sale + return) |
 | `backend/Controllers/ProductsController.cs` | `type` query filter + `productType` in response |
+| `backend/Controllers/StockController.cs` | `GET /api/stock/report` endpoint + `fromDate`/`toDate` filter in `/api/stock/logs` |
 | `backend/Migrations/20261011121630_RecipeBom.cs` | `ProductType` column + `RecipeItems` table |
 
 ### Frontend
@@ -197,8 +255,10 @@ Dashboard "Low Stock Alerts" KPI mein ingredients bhi count hote hain.
 | File | Change |
 |------|--------|
 | `src/lib/mock-data.ts` | `productType` field in `Product` interface |
-| `src/pages/AdminDashboard.tsx` | 3 inventory sub-tabs + Recipe manager UI + Product Type dropdown |
+| `src/pages/AdminDashboard.tsx` | 4 inventory sub-tabs + Recipe manager UI + Product Type dropdown + Inventory Reports (searchable product selector, date range, summary cards, movement history) + search box in Recipes tab + responsive layout |
 | `src/pages/OrderScreen.tsx` | Filter ingredients from POS display |
+| `src/components/ui/command.tsx` | Searchable combobox (cmdk) — used in Reports product selector |
+| `src/components/ui/popover.tsx` | Popover wrapper for combobox |
 
 ---
 
@@ -222,3 +282,5 @@ Ya agar `Program.cs` mein auto-migration enabled hai toh backend run karte hi ap
 - **Custom open items** (POS mein manual entry) ka stock track nahi hota (existing behavior)
 - **Delete restrict** — agar koi ingredient recipe mein use ho raha hai toh us product ko delete nahi kar sakte (FK constraint)
 - **Decimal quantities** support — e.g. 0.5 liter milk per cup (Math.Ceiling se round hota hai stock deduction mein)
+- **Inventory Reports** — Reports sub-tab se kisi bhi product/ingredient ka date-wise stock movement dekh sakte ho; searchable dropdown se product dhoondo aur date range choose karo
+- **Stock logs `fromDate`/`toDate`** — backend `CreatedAt` UTC par filter karta hai; frontend ISO date (`YYYY-MM-DD`) bhejta hai

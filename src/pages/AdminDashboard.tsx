@@ -5,7 +5,8 @@ import {
   TrendingUp, DollarSign, ShoppingBag, BarChart3,
   Plus, Search, Trash2, X, Users,
   FolderTree, FileText, Settings as SettingsIcon, Calendar,
-  Boxes, AlertTriangle, ArrowUpRight, History, UserCheck, Filter, Printer, Download, Tag, Edit, Save
+  Boxes, AlertTriangle, ArrowUpRight, History, UserCheck, Filter, Printer, Download, Tag, Edit, Save,
+  ChevronDown, Check
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -26,6 +27,11 @@ import {
 } from '@/lib/mock-data';
 import { toast } from 'sonner';
 import { API_BASE_URL } from '@/config/api';
+import { cn } from '@/lib/utils';
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 const COLORS = ['hsl(234,89%,56%)', 'hsl(152,69%,40%)', 'hsl(38,92%,50%)', 'hsl(0,72%,56%)', 'hsl(280,60%,55%)'];
 
@@ -102,7 +108,7 @@ const AdminDashboard = () => {
   const [stockAddAmount, setStockAddAmount] = useState('20');
 
   // Inventory Sub-Tabs
-  const [inventorySubTab, setInventorySubTab] = useState<'products' | 'ingredients' | 'recipes'>('products');
+  const [inventorySubTab, setInventorySubTab] = useState<'products' | 'ingredients' | 'recipes' | 'reports'>('products');
 
   // Recipe Management
   const [selectedRecipeProduct, setSelectedRecipeProduct] = useState<Product | null>(null);
@@ -748,6 +754,52 @@ const AdminDashboard = () => {
 
   // BOM filter for Recipes tab
   const [bomFilter, setBomFilter] = useState<'all' | 'with-bom' | 'without-bom'>('all');
+  const [recipeSearch, setRecipeSearch] = useState('');
+
+  // Inventory Report
+  const [reportProductId, setReportProductId] = useState<number | ''>('');
+  const [reportProductOpen, setReportProductOpen] = useState(false);
+  const [reportRange, setReportRange] = useState<'today' | 'yesterday' | '7d' | '30d' | 'custom'>('7d');
+  const [reportFrom, setReportFrom] = useState<string>('');
+  const [reportTo, setReportTo] = useState<string>('');
+
+  const selectedReportProduct = useMemo(
+    () => productsList.find(p => Number(p.id) === Number(reportProductId)) ?? null,
+    [productsList, reportProductId]
+  );
+
+  const getReportDates = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (reportRange === 'today') return { from: today, to: new Date() };
+    if (reportRange === 'yesterday') {
+      const y = new Date(today); y.setDate(y.getDate() - 1);
+      return { from: y, to: new Date(y.getFullYear(), y.getMonth(), y.getDate(), 23, 59, 59) };
+    }
+    if (reportRange === '7d') return { from: new Date(today.getTime() - 6 * 86400000), to: new Date() };
+    if (reportRange === '30d') return { from: new Date(today.getTime() - 29 * 86400000), to: new Date() };
+    // custom
+    const f = reportFrom ? new Date(reportFrom) : new Date(today.getTime() - 6 * 86400000);
+    const t = reportTo ? new Date(reportTo + 'T23:59:59') : new Date();
+    return { from: f, to: t };
+  };
+
+  const { from: reportFromDate, to: reportToDate } = getReportDates();
+
+  const { data: stockReport, isLoading: reportLoading } = useQuery({
+    queryKey: ['stock-report', reportProductId, reportRange, reportFrom, reportTo],
+    queryFn: async () => {
+      if (!reportProductId) return null;
+      const params = new URLSearchParams();
+      params.append('productId', String(reportProductId));
+      params.append('fromDate', reportFromDate.toISOString().split('T')[0]);
+      params.append('toDate', reportToDate.toISOString().split('T')[0]);
+      const res = await fetch(`${API_BASE_URL}/api/stock/report?${params.toString()}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!reportProductId,
+  });
 
   // Delete product mutation
   const deleteProductMutation = useMutation({
@@ -1100,7 +1152,7 @@ const AdminDashboard = () => {
                 </h1>
                 <p className="text-muted-foreground text-sm">Manage tuck shop items, ingredients (raw materials), recipes & stock.</p>
               </div>
-              {inventorySubTab !== 'recipes' && (
+              {inventorySubTab !== 'recipes' && inventorySubTab !== 'reports' && (
                 <button
                   onClick={openAddProductModal}
                   className="h-11 px-4 rounded-xl gradient-primary text-primary-foreground font-semibold flex items-center gap-2 shadow-soft hover:opacity-90 transition-opacity"
@@ -1116,6 +1168,7 @@ const AdminDashboard = () => {
                 { id: 'products', label: 'Products' },
                 { id: 'ingredients', label: 'Ingredients' },
                 { id: 'recipes', label: 'Recipes (BOM)' },
+                { id: 'reports', label: '📊 Reports' },
               ] as const).map(t => (
                 <button
                   key={t.id}
@@ -1131,13 +1184,231 @@ const AdminDashboard = () => {
               ))}
             </div>
 
-            {inventorySubTab === 'recipes' ? (
+            {inventorySubTab === 'reports' ? (
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground">Select any product or ingredient to view its full stock movement report.</p>
+
+                {/* Filters: Product + Date Range */}
+                <div className="bg-card border rounded-2xl p-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Product / Ingredient</label>
+                      <Popover open={reportProductOpen} onOpenChange={setReportProductOpen}>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="w-full h-11 px-3 rounded-xl border bg-muted/30 text-sm flex items-center justify-between gap-2 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                          >
+                            <span className="flex items-center gap-2 min-w-0">
+                              {selectedReportProduct ? (
+                                <>
+                                  <span className="shrink-0">{selectedReportProduct.image}</span>
+                                  <span className="truncate">
+                                    {selectedReportProduct.name}{' '}
+                                    {selectedReportProduct.productType === 'Ingredient' ? '(Ingredient)' : ''}
+                                    <span className="text-muted-foreground"> — Stock: {selectedReportProduct.stockQuantity ?? 0}</span>
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground">Select a product...</span>
+                              )}
+                            </span>
+                            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Search product or ingredient..." />
+                            <CommandList>
+                              <CommandEmpty>No product found.</CommandEmpty>
+                              <CommandGroup>
+                                {productsList.map(p => (
+                                  <CommandItem
+                                    key={p.id}
+                                    value={`${p.name} ${p.productType ?? ''}`}
+                                    onSelect={() => {
+                                      setReportProductId(p.id);
+                                      setReportProductOpen(false);
+                                    }}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <Check className={cn("h-4 w-4 shrink-0", Number(reportProductId) === Number(p.id) ? "opacity-100" : "opacity-0")} />
+                                    <span className="shrink-0">{p.image}</span>
+                                    <span className="flex-1 truncate">{p.name}</span>
+                                    <span className="text-[11px] text-muted-foreground shrink-0">
+                                      {p.productType === 'Ingredient' ? '(Ingredient) ' : ''}Stock: {p.stockQuantity ?? 0}
+                                    </span>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Date Range</label>
+                      <div className="flex flex-wrap gap-1 bg-muted/40 rounded-xl p-1">
+                        {([
+                          { id: 'today', label: 'Today' },
+                          { id: 'yesterday', label: 'Yesterday' },
+                          { id: '7d', label: '7 Days' },
+                          { id: '30d', label: '30 Days' },
+                          { id: 'custom', label: 'Custom' },
+                        ] as const).map(r => (
+                          <button
+                            key={r.id}
+                            onClick={() => setReportRange(r.id)}
+                            className={`flex-1 min-w-[72px] py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                              reportRange === r.id
+                                ? 'gradient-primary text-primary-foreground shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            {r.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {reportRange === 'custom' && (
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex-1">
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">From</label>
+                        <input
+                          type="date"
+                          value={reportFrom}
+                          onChange={e => setReportFrom(e.target.value)}
+                          className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs font-semibold text-muted-foreground mb-1">To</label>
+                        <input
+                          type="date"
+                          value={reportTo}
+                          onChange={e => setReportTo(e.target.value)}
+                          className="w-full h-10 px-3 rounded-xl border bg-muted/30 text-sm focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Report Content */}
+                {!reportProductId ? (
+                  <div className="bg-card border rounded-2xl p-12 text-center">
+                    <div className="w-14 h-14 rounded-full bg-accent flex items-center justify-center mx-auto mb-3">
+                      <BarChart3 className="w-7 h-7 text-primary" />
+                    </div>
+                    <p className="text-sm font-semibold">Select a product to view its inventory report</p>
+                    <p className="text-xs text-muted-foreground mt-1">Opening stock, stock in/out, net change & full movement history.</p>
+                  </div>
+                ) : reportLoading ? (
+                  <div className="bg-card border rounded-2xl p-8 text-center text-sm text-muted-foreground">Loading report...</div>
+                ) : stockReport ? (
+                  <div className="space-y-4">
+                    {/* Product Header */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center text-2xl">
+                        {stockReport.productImage || '📦'}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-lg">{stockReport.productName}</h3>
+                        <p className="text-xs text-muted-foreground">
+                          {stockReport.productType === 'Ingredient' ? 'Ingredient / Raw Material' : 'Saleable Item'}
+                          {' • '}
+                          {new Date(stockReport.fromDate).toLocaleDateString()} → {new Date(stockReport.toDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div className="bg-card border rounded-2xl p-4">
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Opening</p>
+                        <p className="text-2xl font-bold mt-1 text-muted-foreground">{stockReport.openingStock}</p>
+                      </div>
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
+                        <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Stock In</p>
+                        <p className="text-2xl font-bold mt-1 text-emerald-600">+{stockReport.totalIn}</p>
+                      </div>
+                      <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4">
+                        <p className="text-[11px] font-semibold text-rose-600 uppercase tracking-wide">Stock Out</p>
+                        <p className="text-2xl font-bold mt-1 text-rose-600">{stockReport.totalOut}</p>
+                      </div>
+                      <div className={`border rounded-2xl p-4 ${stockReport.netChange >= 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-rose-500/10 border-rose-500/20'}`}>
+                        <p className={`text-[11px] font-semibold uppercase tracking-wide ${stockReport.netChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>Net Change</p>
+                        <p className={`text-2xl font-bold mt-1 ${stockReport.netChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {stockReport.netChange >= 0 ? '+' : ''}{stockReport.netChange}
+                        </p>
+                      </div>
+                      <div className="bg-primary/10 border border-primary/20 rounded-2xl p-4">
+                        <p className="text-[11px] font-semibold text-primary uppercase tracking-wide">Current Stock</p>
+                        <p className="text-2xl font-bold mt-1 text-primary">{stockReport.currentStock}</p>
+                      </div>
+                    </div>
+
+                    {/* Logs Table */}
+                    <div className="bg-card border rounded-2xl overflow-hidden">
+                      <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between">
+                        <h4 className="font-bold text-sm">Stock Movement History</h4>
+                        <span className="text-xs text-muted-foreground">{stockReport.logs?.length ?? 0} entries</span>
+                      </div>
+                      {(!stockReport.logs || stockReport.logs.length === 0) ? (
+                        <div className="p-8 text-center text-sm text-muted-foreground">No stock movements in this date range.</div>
+                      ) : (
+                        <div className="max-h-[500px] overflow-auto">
+                          <table className="w-full text-sm min-w-[420px]">
+                            <thead className="bg-muted/40 sticky top-0 text-xs uppercase text-muted-foreground">
+                              <tr>
+                                <th className="text-left p-3">Date & Time</th>
+                                <th className="text-left p-3">Type</th>
+                                <th className="text-left p-3">Reason</th>
+                                <th className="text-right p-3">Quantity</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {stockReport.logs.map((log: any) => (
+                                <tr key={log.id} className="border-t hover:bg-muted/20">
+                                  <td className="p-3 text-xs text-muted-foreground">
+                                    {new Date(log.createdAt).toLocaleString()}
+                                  </td>
+                                  <td className="p-3">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                      log.type === 'In' ? 'bg-emerald-500/15 text-emerald-600' : 'bg-rose-500/15 text-rose-600'
+                                    }`}>
+                                      {log.type === 'In' ? '↗ IN' : '↘ OUT'}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-xs">{log.reason}</td>
+                                  <td className={`p-3 text-right font-mono font-bold ${
+                                    log.quantityChange > 0 ? 'text-emerald-600' : 'text-rose-600'
+                                  }`}>
+                                    {log.quantityChange > 0 ? '+' : ''}{log.quantityChange}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-card border rounded-2xl p-8 text-center text-sm text-muted-foreground">
+                    Failed to load report. Please try again.
+                  </div>
+                )}
+              </div>
+            ) : inventorySubTab === 'recipes' ? (
               <div className="space-y-4">
                 {!selectedRecipeProduct ? (
                   <>
-                    <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <p className="text-sm text-muted-foreground">Select a saleable product to manage its recipe ingredients (BOM).</p>
-                      <div className="flex gap-1 bg-card border rounded-xl shadow-sm p-1">
+                      <div className="flex items-center gap-1 bg-card border rounded-xl shadow-sm p-1">
                         {([
                           { id: 'all', label: 'All Products' },
                           { id: 'with-bom', label: 'With BOM' },
@@ -1157,6 +1428,16 @@ const AdminDashboard = () => {
                         ))}
                       </div>
                     </div>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+                      <input
+                        type="text"
+                        value={recipeSearch}
+                        onChange={e => setRecipeSearch(e.target.value)}
+                        placeholder="Search product name..."
+                        className="w-full h-11 pl-10 pr-3 rounded-xl border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {productsList
                         .filter(p => !p.productType || p.productType === 'Saleable')
@@ -1164,6 +1445,10 @@ const AdminDashboard = () => {
                           if (bomFilter === 'with-bom') return hasBom(p.id);
                           if (bomFilter === 'without-bom') return !hasBom(p.id);
                           return true;
+                        })
+                        .filter(p => {
+                          if (!recipeSearch.trim()) return true;
+                          return p.name.toLowerCase().includes(recipeSearch.toLowerCase());
                         })
                         .map(p => (
                         <button
