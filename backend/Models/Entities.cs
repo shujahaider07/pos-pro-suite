@@ -87,7 +87,7 @@ public class UserEntity
 public class SettingsEntity
 {
     public int Id { get; set; }
-    public string ShopName { get; set; } = "TuckShop POS";
+    public string ShopName { get; set; } = "LIP SIP MART";
     public string Tagline { get; set; } = "Quick & Easy Counter Sales";
     public string Phone { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;

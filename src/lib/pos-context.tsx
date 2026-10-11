@@ -27,7 +27,7 @@ const AUTH_STORAGE_KEY = 'restopos_auth_session';
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      const stored = sessionStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as AuthUser;
         return !!parsed.role;
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [role, setRole] = useState<UserRole>(() => {
     try {
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      const stored = sessionStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as AuthUser;
         return parsed.role;
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [userName, setUserName] = useState<string>(() => {
     try {
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      const stored = sessionStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as AuthUser;
         return parsed.userName || '';
@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [email, setEmail] = useState<string>(() => {
     try {
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      const stored = sessionStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as AuthUser;
         return parsed.email || '';
@@ -81,12 +81,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isAuthenticated && role) {
-      localStorage.setItem(
+      sessionStorage.setItem(
         AUTH_STORAGE_KEY,
         JSON.stringify({ email: email || (userName ? `${userName}@resto.com` : ''), role, userName })
       );
     } else {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
+      sessionStorage.removeItem(AUTH_STORAGE_KEY);
     }
   }, [isAuthenticated, role, userName, email]);
 
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(selectedRole);
     setUserName(name);
     setEmail(userEmail);
-    localStorage.setItem(
+    sessionStorage.setItem(
       AUTH_STORAGE_KEY,
       JSON.stringify({ email: userEmail, role: selectedRole, userName: name })
     );
@@ -108,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(null);
     setUserName('');
     setEmail('');
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    sessionStorage.removeItem(AUTH_STORAGE_KEY);
   };
 
   return (

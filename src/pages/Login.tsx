@@ -108,7 +108,7 @@ const Login = () => {
             <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shadow-elevated">
               <Store className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-white">TuckShop POS</span>
+            <span className="text-xl font-bold tracking-tight text-white">LIP SIP MART</span>
           </div>
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.5 }}>
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white text-xs font-semibold backdrop-blur-md mb-4">
@@ -140,11 +140,11 @@ const Login = () => {
             <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
               <Store className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold tracking-tight">TuckShop POS</span>
+            <span className="text-xl font-bold tracking-tight">LIP SIP MART</span>
           </div>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold mb-1 tracking-tight">Welcome to TuckShop POS</h2>
+            <h2 className="text-2xl font-bold mb-1 tracking-tight">Welcome to LIP SIP MART</h2>
             <p className="text-muted-foreground text-sm">Sign in with your account credentials</p>
           </div>
 

@@ -208,7 +208,7 @@ const OrderScreen = () => {
   };
 
   // Barcode Scanner Listener
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleSearchKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const rawQuery = search.trim();
@@ -226,7 +226,24 @@ const OrderScreen = () => {
         p => p.name.trim().toLowerCase() === q
       ) : null;
 
-      const matched = matchedBarcode || matchedName || (displayProducts.length === 1 ? displayProducts[0] : null);
+      let matched = matchedBarcode || matchedName || (displayProducts.length === 1 ? displayProducts[0] : null);
+
+      if (!matched) {
+        // Fallback: Check backend immediately to avoid race condition during fast scanning
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/products?search=${encodeURIComponent(rawQuery)}`);
+          if (res.ok) {
+            const data = await res.json();
+            const apiMatch = data.find((p: any) => 
+              (p.barcode && p.barcode.trim().toLowerCase() === q) || 
+              (p.name && p.name.trim().toLowerCase() === q)
+            );
+            if (apiMatch) matched = apiMatch;
+          }
+        } catch (err) {
+          // ignore error and fallback to not found
+        }
+      }
 
       if (matched) {
         addToCart(matched);
@@ -356,7 +373,7 @@ const OrderScreen = () => {
               🏪
             </div>
             <div>
-              <span className="font-bold text-base leading-none block">TuckShop POS</span>
+              <span className="font-bold text-base leading-none block">LIP SIP MART</span>
               <span className="text-[10px] text-muted-foreground">Counter Sales</span>
             </div>
           </div>

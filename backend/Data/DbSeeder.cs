@@ -114,9 +114,9 @@ public static class DbSeeder
         {
             context.Settings.Add(new SettingsEntity
             {
-                ShopName = "TuckShop POS",
+                ShopName = "LIP SIP MART",
                 Tagline = "Quick & Easy Counter Sales",
-                Phone = "+92 300 0000000",
+                Phone = "03402224447",
                 Email = "admin@tuckshop.com",
                 Address = "School Campus, Block A",
                 Currency = "PKR",

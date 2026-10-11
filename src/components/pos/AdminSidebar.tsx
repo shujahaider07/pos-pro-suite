@@ -43,7 +43,7 @@ const AdminSidebar = ({ children }: AdminSidebarProps) => {
           </div>
           {!collapsed && (
             <div>
-              <span className="font-bold text-base whitespace-nowrap block leading-none">TuckShop POS</span>
+              <span className="font-bold text-base whitespace-nowrap block leading-none">LIP SIP MART</span>
               <span className="text-[10px] text-primary font-semibold uppercase tracking-wider">Management Portal</span>
             </div>
           )}

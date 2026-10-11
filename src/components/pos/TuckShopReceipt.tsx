@@ -36,15 +36,38 @@ const TuckShopReceipt = ({
   const handlePrint = () => {
     const printContent = receiptRef.current?.innerHTML;
     if (!printContent) return;
-    const win = window.open('', '_blank', 'width=320,height=600');
-    if (!win) return;
-    win.document.write(`
+
+    // Hidden iframe (popup + window.close() se spooler job toot jati thi)
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText =
+      'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      document.body.removeChild(iframe);
+      return;
+    }
+
+    doc.open();
+    doc.write(`
       <html>
         <head>
           <title>Receipt - ${orderNumber}</title>
           <style>
+            /* Thermal printer ka paper size: 80mm width, height auto */
+            @page { size: 80mm auto; margin: 0; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Courier New', monospace; font-size: 14px; font-weight: 700; width: 300px; padding: 10px; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            html, body { width: 72mm; }
+            body {
+              font-family: 'Courier New', monospace;
+              font-size: 13px;
+              font-weight: 700;
+              padding: 2mm;
+              color: #000;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
             .center { text-align: center; }
             .bold { font-weight: 700; }
             .line { border-top: 2px solid #000; margin: 8px 0; }
@@ -52,18 +75,37 @@ const TuckShopReceipt = ({
             .total-row { font-size: 16px; font-weight: 700; }
             h2 { font-size: 18px; margin-bottom: 2px; font-weight: 700; }
             p { font-size: 12px; font-weight: 700; }
-            @media print {
-              body { font-size: 13px; width: 100%; }
-            }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { font-size: 12px; font-weight: 700; padding: 2px 0; vertical-align: top; }
           </style>
         </head>
-        <body>
-          ${printContent}
-          <script>window.onload = () => { window.print(); window.close(); }<\/script>
-        </body>
+        <body>${printContent}</body>
       </html>
     `);
-    win.document.close();
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      // print dialog/spool hone ke baad iframe hata do
+      setTimeout(() => {
+        if (iframe.parentNode) document.body.removeChild(iframe);
+      }, 1500);
+    }, 300);
+  };
+
+  // Table cell styles (inline taake print mein bhi same rahein)
+  const thStyle: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '2px 0',
+    borderBottom: '2px solid #000',
+  };
+  const tdStyle: React.CSSProperties = {
+    fontSize: 12,
+    fontWeight: 700,
+    padding: '3px 0',
+    verticalAlign: 'top',
   };
 
   return (
@@ -71,15 +113,15 @@ const TuckShopReceipt = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm p-2 sm:p-4"
     >
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-card rounded-2xl shadow-float w-full max-w-sm mx-4 overflow-hidden"
+        className="bg-card rounded-2xl shadow-float w-full max-w-sm flex flex-col max-h-[92dvh] overflow-hidden"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b bg-emerald-500/10">
+        {/* Header (fixed) */}
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b bg-emerald-500/10 shrink-0">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             <div>
@@ -87,70 +129,95 @@ const TuckShopReceipt = ({
               <p className="text-[10px] text-emerald-600/80 font-mono">Order {orderNumber}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-800 transition-colors">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-800 transition-colors"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Receipt Body */}
-        <div className="p-5">
+        {/* Receipt Body (scrollable) */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5">
           {/* Printable area */}
           <div ref={receiptRef} className="font-mono text-sm font-bold" style={{ color: '#000' }}>
             {/* Shop Header */}
             <div className="center bold" style={{ textAlign: 'center', fontWeight: '700', marginBottom: 6 }}>
-              <h2 style={{ fontSize: 16, margin: 0, fontWeight: '700' }}>TUCK SHOP POS</h2>
+              <h2 style={{ fontSize: 16, margin: 0, fontWeight: '700' }}>LIP SIP MART</h2>
               <p style={{ fontSize: 11, fontWeight: '700' }}>Quick & Easy Counter Sales</p>
               <p style={{ fontSize: 11, fontWeight: '700' }}>{dateStr} {timeStr}</p>
               <p style={{ fontSize: 11, fontWeight: '700' }}>Order: <strong>{orderNumber}</strong></p>
               <p style={{ fontSize: 11, fontWeight: '700' }}>Cashier: <strong>{cashierName}</strong></p>
+              <p style={{ fontSize: 11, fontWeight: '700' }}>Contact no: <strong>0340-2224447</strong></p>
             </div>
 
             <div className="line" style={{ borderTop: '2px solid #000', margin: '8px 0' }} />
 
-            {/* Items */}
-            {items.map((item) => (
-              <div key={item.product.id} className="row" style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontWeight: '700' }}>
-                <span style={{ flex: 1, fontSize: 12 }}>{item.product.name}</span>
-                <span style={{ marginLeft: 8, fontSize: 12 }}>{item.quantity}x</span>
-                <span style={{ marginLeft: 8, textAlign: 'right', minWidth: 55, fontSize: 12 }}>Rs {item.product.price * item.quantity}</span>
-              </div>
-            ))}
+            {/* Items Table with Columns */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', color: '#000' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thStyle, textAlign: 'left' }}>Product</th>
+                  <th style={{ ...thStyle, textAlign: 'center', width: 30 }}>Qty</th>
+                  <th style={{ ...thStyle, textAlign: 'right', width: 45 }}>Price</th>
+                  <th style={{ ...thStyle, textAlign: 'right', width: 55 }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.product.id}>
+                    <td style={{ ...tdStyle, textAlign: 'left', paddingRight: 4, wordBreak: 'break-word' }}>
+                      {item.product.name}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'center' }}>{item.quantity}</td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>{item.product.price}</td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      {item.product.price * item.quantity}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
             <div className="line" style={{ borderTop: '2px solid #000', margin: '8px 0' }} />
 
             {/* Tax breakdown */}
-            <div className="row" style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontWeight: '700' }}>
+            <div className="row" style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', fontWeight: '700' }}>
               <span style={{ fontSize: 12 }}>Subtotal</span>
               <span style={{ fontSize: 12 }}>Rs {subtotal}</span>
             </div>
 
             {taxRate > 0 && (
-              <div className="row" style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontWeight: '700' }}>
+              <div className="row" style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', fontWeight: '700' }}>
                 <span style={{ fontSize: 12 }}>GST Tax ({taxRate}%)</span>
                 <span style={{ fontSize: 12 }}>Rs {taxAmount}</span>
               </div>
             )}
 
             {/* Total */}
-            <div className="row total-row" style={{ display: 'flex', justify: 'space-between', fontWeight: '700', fontSize: 16, marginTop: 6 }}>
+            <div
+              className="row total-row"
+              style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: 16, marginTop: 6 }}
+            >
               <span>GRAND TOTAL</span>
               <span>Rs {grandTotal}</span>
             </div>
 
             <div className="line" style={{ borderTop: '2px solid #000', margin: '8px 0' }} />
 
-            <div style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontSize: 12, fontWeight: '700' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', fontSize: 12, fontWeight: '700' }}>
               <span>Payment</span>
               <span>{paymentMethod}</span>
             </div>
 
             {paymentMethod === 'Cash' && cashReceived && cashReceived > 0 && (
               <>
-                <div style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontSize: 12, fontWeight: '700' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', fontSize: 12, fontWeight: '700' }}>
                   <span>Cash Received</span>
                   <span>Rs {cashReceived}</span>
                 </div>
-                <div style={{ display: 'flex', justify: 'space-between', margin: '4px 0', fontSize: 12, fontWeight: '700', color: '#16a34a' }}>
+                {/* Thermal printer sirf black print karta hai, isliye green color hata diya */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', fontSize: 12, fontWeight: '700', color: '#000' }}>
                   <span>Change</span>
                   <span>Rs {change >= 0 ? change : 0}</span>
                 </div>
@@ -170,17 +237,19 @@ const TuckShopReceipt = ({
               Contact no: 0302-8921819
             </div>
           </div>
+        </div>
 
-          {/* Print Button */}
+        {/* Footer buttons (fixed, hamesha visible) */}
+        <div className="shrink-0 border-t bg-card p-3 sm:p-4 space-y-2">
           <button
             onClick={handlePrint}
-            className="mt-5 w-full h-12 rounded-xl gradient-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+            className="w-full h-11 rounded-xl gradient-primary text-primary-foreground font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
           >
             <Printer className="w-4 h-4" /> Print Receipt
           </button>
           <button
             onClick={onClose}
-            className="mt-2 w-full h-10 rounded-xl border text-sm font-medium hover:bg-muted transition-colors"
+            className="w-full h-10 rounded-xl border text-sm font-medium hover:bg-muted transition-colors"
           >
             Close
           </button>
