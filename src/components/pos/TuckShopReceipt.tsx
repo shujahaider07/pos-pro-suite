@@ -144,11 +144,11 @@ const TuckShopReceipt = ({
             {/* Shop Header */}
             <div className="center bold" style={{ textAlign: 'center', fontWeight: '700', marginBottom: 6 }}>
               <h2 style={{ fontSize: 16, margin: 0, fontWeight: '700' }}>LIP SIP MART</h2>
-              <p style={{ fontSize: 11, fontWeight: '700' }}>Quick & Easy Counter Sales</p>
+              <p style={{ fontSize: 11, fontWeight: '700' }}>Sardar Filling Station Attock Pump</p>
               <p style={{ fontSize: 11, fontWeight: '700' }}>{dateStr} {timeStr}</p>
               <p style={{ fontSize: 11, fontWeight: '700' }}>Order: <strong>{orderNumber}</strong></p>
               <p style={{ fontSize: 11, fontWeight: '700' }}>Cashier: <strong>{cashierName}</strong></p>
-              <p style={{ fontSize: 11, fontWeight: '700' }}>Contact no: <strong>0340-2224447</strong></p>
+              <p style={{ fontSize: 11, fontWeight: '700' }}>Contact no: <strong>0339-5470747</strong></p>
             </div>
 
             <div className="line" style={{ borderTop: '2px solid #000', margin: '8px 0' }} />
