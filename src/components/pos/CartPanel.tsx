@@ -16,6 +16,7 @@ interface CartPanelProps {
   onUpdateQuantity: (productId: number, delta: number) => void;
   onRemoveItem: (productId: number) => void;
   onPrintKOT: () => void;
+  onPrintBill: () => void;
   onHoldOrder: () => void;
   onProceedPayment: () => void;
   onCancelOrder: () => void;
@@ -25,7 +26,7 @@ interface CartPanelProps {
 
 const CartPanel = ({
   table, items, onUpdateQuantity, onRemoveItem,
-  onPrintKOT, onHoldOrder, onProceedPayment, onCancelOrder, onClearCart, elapsedMinutes,
+  onPrintKOT, onPrintBill, onHoldOrder, onProceedPayment, onCancelOrder, onClearCart, elapsedMinutes,
 }: CartPanelProps) => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 
@@ -139,11 +140,14 @@ const CartPanel = ({
             <button onClick={onPrintKOT} className="h-11 rounded-xl gradient-success text-success-foreground font-semibold text-sm hover:opacity-90 transition-opacity">
               🖨️ Print KOT
             </button>
+            <button onClick={onPrintBill} className="h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity">
+              🧾 Print Bill
+            </button>
             <button onClick={onHoldOrder} className="h-11 rounded-xl gradient-warning text-warning-foreground font-semibold text-sm hover:opacity-90 transition-opacity">
               ⏸️ Hold
             </button>
-            <button onClick={onProceedPayment} className="h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity col-span-2">
-              💳 Proceed to Payment
+            <button onClick={onProceedPayment} className="h-11 rounded-xl border-2 border-primary text-primary font-semibold text-sm hover:bg-primary/10 transition-colors">
+              💳 Proceed to Pay
             </button>
             <button onClick={onClearCart} className="h-11 rounded-xl border text-sm font-semibold text-muted-foreground hover:bg-muted/60 transition-colors">
               🧹 Clear Cart

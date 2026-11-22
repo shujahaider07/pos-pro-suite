@@ -59,6 +59,7 @@ const OrderScreen = () => {
   const [showPayment, setShowPayment] = useState(false);
   const [showKOT, setShowKOT] = useState(false);
   const [showBill, setShowBill] = useState(false);
+  const [isOrderPaid, setIsOrderPaid] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [currentOrderNumber, setCurrentOrderNumber] = useState<string | null>(null);
 
@@ -258,8 +259,9 @@ const OrderScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['table', tableId] });
       queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
       if (mode === 'payment') {
-        setShowPayment(true);
-        toast.success('Order created');
+        setIsOrderPaid(false);
+        setShowBill(true);
+        toast.success('Bill generated');
       }
       if (mode === 'hold') {
         holdOrderMutation.mutate(data.id);
@@ -280,15 +282,14 @@ const OrderScreen = () => {
       }
     },
     onSuccess: () => {
-      setCartItems([]);
-      setCurrentOrderId(null);
-      setCurrentOrderNumber(null);
       queryClient.invalidateQueries({ queryKey: ['tables'] });
       queryClient.invalidateQueries({ queryKey: ['table', tableId] });
       queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Payment completed!');
-      navigate('/tables');
+      setIsOrderPaid(true);
+      setShowPayment(false);
+      setShowBill(true);
     },
     onError: () => {
       toast.error('Failed to complete order');
@@ -382,11 +383,54 @@ const OrderScreen = () => {
     setShowKOT(true);
   };
 
+  const handlePrintBill = async () => {
+    if (cartItems.length === 0) {
+      toast.error('Cart is empty');
+      return;
+    }
+    if (!currentOrderId && table) {
+      try {
+        const createdBy = userEmail || userName || 'Staff';
+        const response = await fetch(`${API_BASE_URL}/api/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tableId: table.id,
+            items: cartItems.map(item => ({
+              productId: item.product.id,
+              quantity: item.quantity,
+            })),
+            createdBy,
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setCurrentOrderId(data.id);
+          if (data.orderNumber) {
+            setCurrentOrderNumber(data.orderNumber);
+          }
+          queryClient.invalidateQueries({ queryKey: ['tables'] });
+          queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+          queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
+        }
+      } catch (err) {
+        console.error('Failed to auto-create order for bill', err);
+      }
+    }
+    setIsOrderPaid(false);
+    setShowBill(true);
+  };
+
   const handleProceedPayment = async () => {
+    if (cartItems.length === 0) {
+      toast.error('Cart is empty');
+      return;
+    }
     if (currentOrderId) {
       try {
         await updateOrderMutation.mutateAsync(currentOrderId);
-        setShowPayment(true);
+        setIsOrderPaid(false);
+        setShowBill(true);
       } catch {
         // error toast already shown in mutation
       }
@@ -531,6 +575,7 @@ const OrderScreen = () => {
           onUpdateQuantity={updateQuantity}
           onRemoveItem={removeItem}
           onPrintKOT={handlePrintKOT}
+          onPrintBill={handlePrintBill}
           onHoldOrder={handleHoldOrder}
           onProceedPayment={handleProceedPayment}
           onCancelOrder={handleCancelOrder}
@@ -556,7 +601,8 @@ const OrderScreen = () => {
               queryClient.invalidateQueries({ queryKey: ['table', tableId] });
               queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
               toast.success('Payment completed!');
-              navigate('/tables');
+              setIsOrderPaid(true);
+              setShowBill(true);
             }
             setShowPayment(false);
           }}
@@ -578,8 +624,21 @@ const OrderScreen = () => {
           table={table}
           items={cartItems}
           orderNumber={currentOrderNumber}
+          serverName={userName || 'Staff'}
+          isPaid={isOrderPaid}
+          onProceedPayment={() => {
+            setShowBill(false);
+            setShowPayment(true);
+          }}
           onClose={() => {
             setShowBill(false);
+            if (isOrderPaid) {
+              setCartItems([]);
+              setCurrentOrderId(null);
+              setCurrentOrderNumber(null);
+              setIsOrderPaid(false);
+              navigate('/tables');
+            }
           }}
         />
       )}

@@ -90,10 +90,13 @@ interface BillReceiptProps {
   table: TableData;
   items: CartItem[];
   orderNumber?: string | null;
+  serverName?: string | null;
+  isPaid?: boolean;
+  onProceedPayment?: () => void;
   onClose: () => void;
 }
 
-export const BillReceipt = ({ table, items, orderNumber, onClose }: BillReceiptProps) => {
+export const BillReceipt = ({ table, items, orderNumber, serverName, isPaid, onProceedPayment, onClose }: BillReceiptProps) => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
   const now = new Date();
 
@@ -113,7 +116,7 @@ export const BillReceipt = ({ table, items, orderNumber, onClose }: BillReceiptP
   const serviceCharge = Math.round(subtotal * serviceRate);
   const grandTotal = subtotal + tax + serviceCharge;
 
-  const displayOrderNumber = orderNumber ?? `ORD-${2043 + table.id}`;
+  const displayOrderNumber = orderNumber ?? table.orderId ?? `ORD-${2043 + table.id}`;
 
   return (
     <motion.div
@@ -127,14 +130,19 @@ export const BillReceipt = ({ table, items, orderNumber, onClose }: BillReceiptP
         className="bg-card rounded-2xl shadow-float w-full max-w-sm mx-4 print:shadow-none print:w-full print:max-w-none print:m-0 print:border-none print-receipt-card"
       >
         <div className="flex items-center justify-between p-4 border-b no-print">
-          <h3 className="font-bold">Customer Bill</h3>
+          <h3 className="font-bold">{isPaid ? 'Payment Receipt (PAID)' : 'Customer Bill'}</h3>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="p-6 font-mono text-sm space-y-3 print:p-2 print-area">
           <div className="text-center space-y-1">
             <p className="font-bold text-base">🍽️ SYR POS</p>
-            <p className="text-muted-foreground text-xs">Customer Bill</p>
+            <p className="text-muted-foreground text-xs">{isPaid ? 'TAX INVOICE / RECEIPT' : 'Customer Bill'}</p>
+            {isPaid && (
+              <div className="inline-block px-3 py-1 my-1 border-2 border-dashed border-emerald-600 text-emerald-600 font-bold text-xs rounded">
+                *** PAID ***
+              </div>
+            )}
             <div className="border-t border-dashed my-2" />
           </div>
 
@@ -145,6 +153,10 @@ export const BillReceipt = ({ table, items, orderNumber, onClose }: BillReceiptP
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>{now.toLocaleDateString()}</span>
             <span>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Server: {serverName || 'Staff'}</span>
+            <span>Status: {isPaid ? 'Completed' : 'Pending Payment'}</span>
           </div>
 
           <div className="border-t border-dashed" />
@@ -175,8 +187,8 @@ export const BillReceipt = ({ table, items, orderNumber, onClose }: BillReceiptP
                 <span>₨{serviceCharge.toLocaleString()}</span>
               </div>
             )}
-            <div className="border-t border-dashed pt-1 flex justify-between font-bold">
-              <span>Total</span>
+            <div className="border-t border-dashed pt-1 flex justify-between font-bold text-base">
+              <span>Grand Total</span>
               <span>₨{grandTotal.toLocaleString()}</span>
             </div>
           </div>
@@ -184,13 +196,29 @@ export const BillReceipt = ({ table, items, orderNumber, onClose }: BillReceiptP
           <p className="text-center text-xs text-muted-foreground mt-2">Thank you for dining with us!</p>
         </div>
 
-        <div className="p-4 border-t flex gap-2 no-print">
+        <div className="p-4 border-t flex flex-col sm:flex-row gap-2 no-print">
           <button
             onClick={() => { window.print(); toast.success('Bill sent to printer'); }}
             className="flex-1 h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2"
           >
             <Printer className="w-4 h-4" /> Print Bill
           </button>
+          {!isPaid && onProceedPayment && (
+            <button
+              onClick={onProceedPayment}
+              className="flex-1 h-11 rounded-xl gradient-success text-success-foreground font-semibold text-sm flex items-center justify-center gap-2"
+            >
+              💳 Collect Payment
+            </button>
+          )}
+          {isPaid && (
+            <button
+              onClick={onClose}
+              className="flex-1 h-11 rounded-xl border font-semibold text-sm hover:bg-muted transition-colors"
+            >
+              Done
+            </button>
+          )}
         </div>
       </motion.div>
     </motion.div>
