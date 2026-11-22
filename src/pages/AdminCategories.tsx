@@ -55,6 +55,7 @@ const AdminCategories = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories-manage'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
       setEditingCategoryId(null);
       setCategoryForm({ id: '', name: '', icon: '' });
     },
@@ -69,6 +70,7 @@ const AdminCategories = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories-manage'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
   });
 
@@ -92,6 +94,7 @@ const AdminCategories = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories-manage'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
       setEditingSubcategory(null);
       setSubcategoryForm({ categoryId: '', name: '' });
     },
@@ -106,6 +109,7 @@ const AdminCategories = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories-manage'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
   });
 

@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 interface KOTReceiptProps {
   table: TableData;
   items: CartItem[];
+  orderNumber?: string | null;
+  serverName?: string | null;
   onClose: () => void;
 }
 
@@ -17,42 +19,43 @@ interface ChargeSettings {
   servicePercent: number;
 }
 
-const KOTReceipt = ({ table, items, onClose }: KOTReceiptProps) => {
+const KOTReceipt = ({ table, items, orderNumber, serverName, onClose }: KOTReceiptProps) => {
   const now = new Date();
+  const displayOrderNumber = orderNumber ?? table.orderId ?? `ORD-${2043 + table.id}`;
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm print:p-0 print:m-0 print:bg-white"
     >
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-card rounded-2xl shadow-float w-full max-w-sm mx-4"
+        className="bg-card rounded-2xl shadow-float w-full max-w-sm mx-4 print:shadow-none print:w-full print:max-w-none print:m-0 print:border-none print-receipt-card"
       >
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b no-print">
           <h3 className="font-bold">Kitchen Order Ticket</h3>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="p-6 font-mono text-sm space-y-3">
+        <div className="p-6 font-mono text-sm space-y-3 print:p-2 print-area">
           <div className="text-center space-y-1">
             <p className="font-bold text-base">🍽️ SYR POS</p>
-            <p className="text-muted-foreground text-xs">Kitchen Order Ticket</p>
+            <p className="text-muted-foreground text-xs">Kitchen Order Ticket (KOT)</p>
             <div className="border-t border-dashed my-2" />
           </div>
 
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>Table: {table.name}</span>
-            <span>ORD-{2043 + table.id}</span>
+            <span>{displayOrderNumber}</span>
           </div>
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>{now.toLocaleDateString()}</span>
             <span>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Server: Staff</span>
+            <span>Server: {serverName || 'Staff'}</span>
           </div>
 
           <div className="border-t border-dashed" />
@@ -70,9 +73,9 @@ const KOTReceipt = ({ table, items, onClose }: KOTReceiptProps) => {
           <p className="text-center text-xs text-muted-foreground">--- END OF KOT ---</p>
         </div>
 
-        <div className="p-4 border-t flex gap-2">
+        <div className="p-4 border-t flex gap-2 no-print">
           <button
-            onClick={() => { window.print(); toast.success('KOT sent to kitchen'); onClose(); }}
+            onClick={() => { window.print(); toast.success('KOT sent to printer'); }}
             className="flex-1 h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2"
           >
             <Printer className="w-4 h-4" /> Print & Send
@@ -116,19 +119,19 @@ export const BillReceipt = ({ table, items, orderNumber, onClose }: BillReceiptP
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm print:p-0 print:m-0 print:bg-white"
     >
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-card rounded-2xl shadow-float w-full max-w-sm mx-4"
+        className="bg-card rounded-2xl shadow-float w-full max-w-sm mx-4 print:shadow-none print:w-full print:max-w-none print:m-0 print:border-none print-receipt-card"
       >
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b no-print">
           <h3 className="font-bold">Customer Bill</h3>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="p-6 font-mono text-sm space-y-3">
+        <div className="p-6 font-mono text-sm space-y-3 print:p-2 print-area">
           <div className="text-center space-y-1">
             <p className="font-bold text-base">🍽️ SYR POS</p>
             <p className="text-muted-foreground text-xs">Customer Bill</p>
@@ -181,7 +184,7 @@ export const BillReceipt = ({ table, items, orderNumber, onClose }: BillReceiptP
           <p className="text-center text-xs text-muted-foreground mt-2">Thank you for dining with us!</p>
         </div>
 
-        <div className="p-4 border-t flex gap-2">
+        <div className="p-4 border-t flex gap-2 no-print">
           <button
             onClick={() => { window.print(); toast.success('Bill sent to printer'); }}
             className="flex-1 h-11 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2"

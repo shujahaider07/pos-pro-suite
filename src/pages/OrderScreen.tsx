@@ -3,7 +3,7 @@ import { useLocation, useParams, useNavigate, type Location } from 'react-router
 import { motion } from 'framer-motion';
 import { Search, ArrowLeft, UtensilsCrossed } from 'lucide-react';
 import type { CartItem, Product, Category, TableData } from '@/lib/mock-data';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ProductCard from '@/components/pos/ProductCard';
 import CartPanel from '@/components/pos/CartPanel';
 import PaymentModal from '@/components/pos/PaymentModal';
@@ -16,8 +16,25 @@ const OrderScreen = () => {
   const navigate = useNavigate();
   const location = useLocation() as Location & { state?: { table?: TableData } };
   const { userName, userEmail } = useAuth();
+  const queryClient = useQueryClient();
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
+
+  interface ChargeSettings {
+    taxEnabled: boolean;
+    taxPercent: number;
+    serviceEnabled: boolean;
+    servicePercent: number;
+  }
+
+  const { data: chargeSettings } = useQuery<ChargeSettings>({
+    queryKey: ['charges'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/api/charges`);
+      if (!res.ok) throw new Error('Failed to load charges');
+      return res.json();
+    },
+  });
 
   const { data: tableFromApi, isLoading: isTableLoading } = useQuery<TableData | null>({
     queryKey: ['table', tableId],
@@ -161,6 +178,13 @@ const OrderScreen = () => {
 
   type CreateOrderMode = 'payment' | 'hold';
 
+  const cartSubtotal = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const taxRate = chargeSettings?.taxEnabled ? chargeSettings.taxPercent / 100 : 0;
+  const serviceRate = chargeSettings?.serviceEnabled ? chargeSettings.servicePercent / 100 : 0;
+  const tax = Math.round(cartSubtotal * taxRate);
+  const serviceCharge = Math.round(cartSubtotal * serviceRate);
+  const grandTotal = cartSubtotal + tax + serviceCharge;
+
   const updateOrderMutation = useMutation({
     mutationFn: async (orderId: number) => {
       if (!table) {
@@ -184,6 +208,11 @@ const OrderScreen = () => {
       if (!response.ok) {
         throw new Error('Failed to update order');
       }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
     },
     onError: () => {
       toast.error('Failed to update order');
@@ -225,6 +254,9 @@ const OrderScreen = () => {
       if (data.orderNumber) {
         setCurrentOrderNumber(data.orderNumber);
       }
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
       if (mode === 'payment') {
         setShowPayment(true);
         toast.success('Order created');
@@ -248,6 +280,13 @@ const OrderScreen = () => {
       }
     },
     onSuccess: () => {
+      setCartItems([]);
+      setCurrentOrderId(null);
+      setCurrentOrderNumber(null);
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Payment completed!');
       navigate('/tables');
     },
@@ -266,6 +305,13 @@ const OrderScreen = () => {
       }
     },
     onSuccess: () => {
+      setCartItems([]);
+      setCurrentOrderId(null);
+      setCurrentOrderNumber(null);
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.info('Order held');
       navigate('/tables');
     },
@@ -285,6 +331,12 @@ const OrderScreen = () => {
     },
     onSuccess: () => {
       setCartItems([]);
+      setCurrentOrderId(null);
+      setCurrentOrderNumber(null);
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.error('Order cancelled');
       navigate('/tables');
     },
@@ -292,6 +344,43 @@ const OrderScreen = () => {
       toast.error('Failed to cancel order');
     },
   });
+
+  const handlePrintKOT = async () => {
+    if (cartItems.length === 0) {
+      toast.error('Cart is empty');
+      return;
+    }
+    if (!currentOrderId && table) {
+      try {
+        const createdBy = userEmail || userName || 'Staff';
+        const response = await fetch(`${API_BASE_URL}/api/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tableId: table.id,
+            items: cartItems.map(item => ({
+              productId: item.product.id,
+              quantity: item.quantity,
+            })),
+            createdBy,
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setCurrentOrderId(data.id);
+          if (data.orderNumber) {
+            setCurrentOrderNumber(data.orderNumber);
+          }
+          queryClient.invalidateQueries({ queryKey: ['tables'] });
+          queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+          queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
+        }
+      } catch (err) {
+        console.error('Failed to auto-create order for KOT', err);
+      }
+    }
+    setShowKOT(true);
+  };
 
   const handleProceedPayment = async () => {
     if (currentOrderId) {
@@ -324,6 +413,9 @@ const OrderScreen = () => {
       cancelOrderMutation.mutate(currentOrderId);
     } else {
       setCartItems([]);
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+      queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
       toast.error('Order cancelled');
       navigate('/tables');
     }
@@ -438,7 +530,7 @@ const OrderScreen = () => {
           items={cartItems}
           onUpdateQuantity={updateQuantity}
           onRemoveItem={removeItem}
-          onPrintKOT={() => setShowKOT(true)}
+          onPrintKOT={handlePrintKOT}
           onHoldOrder={handleHoldOrder}
           onProceedPayment={handleProceedPayment}
           onCancelOrder={handleCancelOrder}
@@ -449,23 +541,22 @@ const OrderScreen = () => {
 
       {showPayment && (
         <PaymentModal
-          total={cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0)}
+          total={grandTotal}
           onClose={() => setShowPayment(false)}
           onPreviewBill={() => {
+            setShowPayment(false);
             setShowBill(true);
           }}
           onConfirmPayment={() => {
             if (currentOrderId) {
-              completeOrderMutation.mutate(currentOrderId, {
-                onSuccess: () => {
-                  toast.success('Payment completed!');
-                },
-                onError: () => {
-                  toast.error('Failed to complete order');
-                },
-              });
+              completeOrderMutation.mutate(currentOrderId);
             } else {
+              setCartItems([]);
+              queryClient.invalidateQueries({ queryKey: ['tables'] });
+              queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+              queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
               toast.success('Payment completed!');
+              navigate('/tables');
             }
             setShowPayment(false);
           }}
@@ -476,6 +567,8 @@ const OrderScreen = () => {
         <KOTReceipt
           table={table}
           items={cartItems}
+          orderNumber={currentOrderNumber}
+          serverName={userName || 'Staff'}
           onClose={() => setShowKOT(false)}
         />
       )}
@@ -487,8 +580,6 @@ const OrderScreen = () => {
           orderNumber={currentOrderNumber}
           onClose={() => {
             setShowBill(false);
-            setCartItems([]);
-            navigate('/tables');
           }}
         />
       )}

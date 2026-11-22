@@ -11,6 +11,21 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    watch: {
+      ignored: [
+        "**/.vs/**",
+        "**/backend/**",
+        "**/bin/**",
+        "**/obj/**",
+      ],
+    },
+    proxy: {
+      "/api": {
+        target: "https://localhost:7031",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
