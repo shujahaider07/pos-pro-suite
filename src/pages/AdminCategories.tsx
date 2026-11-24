@@ -23,7 +23,6 @@ const AdminCategories = () => {
   });
 
   const [categoryForm, setCategoryForm] = useState({
-    id: '',
     name: '',
     icon: '',
   });
@@ -45,10 +44,27 @@ const AdminCategories = () => {
         });
         if (!res.ok) throw new Error('Failed to update category');
       } else {
+        const slug = categoryForm.name
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '');
+        const baseId = slug || `cat-${Date.now()}`;
+        let generatedId = baseId;
+        let counter = 1;
+        while (categories?.some(c => c.id === generatedId)) {
+          generatedId = `${baseId}-${counter}`;
+          counter++;
+        }
+
         const res = await fetch(`${API_BASE_URL}/api/categories`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(categoryForm),
+          body: JSON.stringify({
+            id: generatedId,
+            name: categoryForm.name,
+            icon: categoryForm.icon,
+          }),
         });
         if (!res.ok) throw new Error('Failed to create category');
       }
@@ -57,7 +73,7 @@ const AdminCategories = () => {
       queryClient.invalidateQueries({ queryKey: ['categories-manage'] });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       setEditingCategoryId(null);
-      setCategoryForm({ id: '', name: '', icon: '' });
+      setCategoryForm({ name: '', icon: '' });
     },
   });
 
@@ -115,7 +131,7 @@ const AdminCategories = () => {
 
   const handleEditCategory = (cat: ManageCategory) => {
     setEditingCategoryId(cat.id);
-    setCategoryForm({ id: cat.id, name: cat.name, icon: cat.icon });
+    setCategoryForm({ name: cat.name, icon: cat.icon });
   };
 
   const handleEditSubcategory = (catId: string, sub: { id: number; name: string }) => {
@@ -135,14 +151,6 @@ const AdminCategories = () => {
           <div className="bg-card rounded-2xl border p-6 space-y-4">
             <h2 className="font-semibold text-lg">{editingCategoryId ? 'Edit Category' : 'Add Category'}</h2>
             <div className="space-y-3">
-              {!editingCategoryId && (
-                <input
-                  className="w-full h-10 rounded-md border px-3 text-sm bg-background"
-                  placeholder="Category ID (e.g. starters)"
-                  value={categoryForm.id}
-                  onChange={e => setCategoryForm(f => ({ ...f, id: e.target.value }))}
-                />
-              )}
               <input
                 className="w-full h-10 rounded-md border px-3 text-sm bg-background"
                 placeholder="Category name"
@@ -159,7 +167,7 @@ const AdminCategories = () => {
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() => saveCategoryMutation.mutate()}
-                disabled={saveCategoryMutation.isPending || !categoryForm.name || (!editingCategoryId && !categoryForm.id)}
+                disabled={saveCategoryMutation.isPending || !categoryForm.name.trim()}
                 className="flex-1 h-10 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
               >
                 {editingCategoryId ? 'Update' : 'Create'}
@@ -167,7 +175,7 @@ const AdminCategories = () => {
               {editingCategoryId && (
                 <button
                   type="button"
-                  onClick={() => { setEditingCategoryId(null); setCategoryForm({ id: '', name: '', icon: '' }); }}
+                  onClick={() => { setEditingCategoryId(null); setCategoryForm({ name: '', icon: '' }); }}
                   className="h-10 px-4 rounded-md border text-sm"
                 >
                   Cancel
@@ -232,7 +240,6 @@ const AdminCategories = () => {
                         <span className="text-xl">{cat.icon}</span>
                         <span className="font-semibold">{cat.name}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">{cat.id}</p>
                     </div>
                     <div className="space-x-2">
                       <button
@@ -293,4 +300,3 @@ const AdminCategories = () => {
 };
 
 export default AdminCategories;
-
