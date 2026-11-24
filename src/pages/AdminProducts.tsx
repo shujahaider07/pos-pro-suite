@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { parseApiError } from '@/lib/api-error';
 import AdminSidebar from '@/components/pos/AdminSidebar';
+import ConfirmDeleteDialog from '@/components/pos/ConfirmDeleteDialog';
 
 interface ManageCategory {
   id: string;
@@ -42,6 +45,7 @@ const AdminProducts = () => {
   });
 
   const [editingProduct, setEditingProduct] = useState<ApiProduct | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -69,11 +73,11 @@ const AdminProducts = () => {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const body = {
-        name: form.name,
+        name: form.name.trim(),
         price: Number(form.price),
         categoryId: form.categoryId,
         subcategory: form.subcategory || null,
-        image: form.image || '🍽️',
+        image: form.image.trim() || '🍽️',
         available: form.available,
       };
 
@@ -83,19 +87,27 @@ const AdminProducts = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error('Failed to update product');
+        if (!res.ok) {
+          throw new Error(await parseApiError(res, 'Failed to update product'));
+        }
       } else {
         const res = await fetch(`${API_BASE_URL}/api/products`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error('Failed to create product');
+        if (!res.ok) {
+          throw new Error(await parseApiError(res, 'Failed to create product'));
+        }
       }
     },
     onSuccess: () => {
+      toast.success(editingProduct ? 'Product updated successfully' : 'Product created successfully');
       queryClient.invalidateQueries({ queryKey: ['products'] });
       resetForm();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to save product');
     },
   });
 
@@ -104,10 +116,18 @@ const AdminProducts = () => {
       const res = await fetch(`${API_BASE_URL}/api/products/${id}`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error('Failed to delete product');
+      if (!res.ok) {
+        throw new Error(await parseApiError(res, 'Failed to delete product'));
+      }
     },
     onSuccess: () => {
+      toast.success('Product deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      setDeleteTarget(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete product');
+      setDeleteTarget(null);
     },
   });
 
@@ -141,12 +161,12 @@ const AdminProducts = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1 bg-card rounded-2xl border p-6 space-y-4">
+          <div className="bg-card rounded-2xl border p-6 space-y-4">
             <h2 className="font-semibold text-lg">{editingProduct ? 'Edit Product' : 'Add Product'}</h2>
             <div className="space-y-3">
               <input
                 className="w-full h-10 rounded-md border px-3 text-sm bg-background"
-                placeholder="Name"
+                placeholder="Product name"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               />
@@ -184,26 +204,27 @@ const AdminProducts = () => {
               </select>
               <input
                 className="w-full h-10 rounded-md border px-3 text-sm bg-background"
-                placeholder="Emoji or image"
+                placeholder="Image (emoji or URL)"
                 value={form.image}
                 onChange={e => setForm(f => ({ ...f, image: e.target.value }))}
               />
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={form.available}
                   onChange={e => setForm(f => ({ ...f, available: e.target.checked }))}
+                  className="rounded border"
                 />
-                <span>Available</span>
+                Available in menu
               </label>
             </div>
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() => saveMutation.mutate()}
-                disabled={!form.name || !form.price || !form.categoryId || saveMutation.isPending}
+                disabled={!form.name.trim() || !form.price || !form.categoryId || saveMutation.isPending}
                 className="flex-1 h-10 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
               >
-                {editingProduct ? 'Update' : 'Create'}
+                {saveMutation.isPending ? 'Saving...' : editingProduct ? 'Update' : 'Create'}
               </button>
               {editingProduct && (
                 <button
@@ -218,32 +239,34 @@ const AdminProducts = () => {
           </div>
 
           <div className="lg:col-span-2 bg-card rounded-2xl border p-6">
-            <div className="flex items-center justify-between mb-4 gap-4">
-              <div>
-                <h2 className="font-semibold text-lg">All Products</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-lg">All Products</h2>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span>Show</span>
+                  <select
+                    className="h-8 rounded-md border px-2 bg-background text-xs"
+                    value={pageSize}
+                    onChange={e => {
+                      setPageSize(Number(e.target.value));
+                      setPage(1);
+                    }}
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                  <span>per page</span>
+                </div>
                 <span className="text-xs text-muted-foreground">{totalProducts} items</span>
-              </div>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span>Rows per page</span>
-                <select
-                  value={pageSize}
-                  onChange={e => {
-                    setPageSize(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="h-8 rounded-md border bg-background px-2 text-xs"
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-xs text-muted-foreground">
-                    <th className="py-2 text-left">Name</th>
+                    <th className="py-2 text-left">Product</th>
                     <th className="py-2 text-left">Category</th>
                     <th className="py-2 text-left">Subcategory</th>
                     <th className="py-2 text-right">Price</th>
@@ -256,7 +279,7 @@ const AdminProducts = () => {
                     <tr key={p.id} className="border-b last:border-0">
                       <td className="py-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">{p.image}</span>
+                          <span className="text-xl">{p.image || '🍽️'}</span>
                           <span className="font-medium">{p.name}</span>
                         </div>
                       </td>
@@ -275,13 +298,13 @@ const AdminProducts = () => {
                       <td className="py-2 text-right space-x-2">
                         <button
                           onClick={() => handleEdit(p)}
-                          className="text-xs px-2 py-1 rounded-md border"
+                          className="text-xs px-2 py-1 rounded-md border hover:bg-muted"
                         >
                           Edit
                         </button>
                         <button
-                          onClick={() => deleteMutation.mutate(p.id)}
-                          className="text-xs px-2 py-1 rounded-md border border-destructive text-destructive"
+                          onClick={() => setDeleteTarget({ id: p.id, name: p.name })}
+                          className="text-xs px-2 py-1 rounded-md border border-destructive text-destructive hover:bg-destructive/10"
                         >
                           Delete
                         </button>
@@ -332,9 +355,23 @@ const AdminProducts = () => {
           </div>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`Delete Product "${deleteTarget?.name}"?`}
+        description="Are you sure you want to delete this product? This action cannot be undone."
+        isDeleting={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.id);
+          }
+        }}
+      />
     </AdminSidebar>
   );
 };
 
 export default AdminProducts;
-

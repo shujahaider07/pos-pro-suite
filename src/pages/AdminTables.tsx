@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { parseApiError } from '@/lib/api-error';
 import AdminSidebar from '@/components/pos/AdminSidebar';
+import ConfirmDeleteDialog from '@/components/pos/ConfirmDeleteDialog';
 import type { TableData } from '@/lib/mock-data';
 
 const AdminTables = () => {
@@ -17,6 +20,7 @@ const AdminTables = () => {
   });
 
   const [editingTableId, setEditingTableId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [form, setForm] = useState({
     name: '',
     capacity: '',
@@ -30,7 +34,7 @@ const AdminTables = () => {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const body = {
-        name: form.name,
+        name: form.name.trim(),
         capacity: Number(form.capacity),
       };
 
@@ -40,29 +44,45 @@ const AdminTables = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error('Failed to update table');
+        if (!res.ok) {
+          throw new Error(await parseApiError(res, 'Failed to update table'));
+        }
       } else {
         const res = await fetch(`${API_BASE_URL}/api/tables`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error('Failed to create table');
+        if (!res.ok) {
+          throw new Error(await parseApiError(res, 'Failed to create table'));
+        }
       }
     },
     onSuccess: () => {
+      toast.success(editingTableId ? 'Table updated successfully' : 'Table created successfully');
       queryClient.invalidateQueries({ queryKey: ['tables'] });
       resetForm();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to save table');
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`${API_BASE_URL}/api/tables/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete table');
+      if (!res.ok) {
+        throw new Error(await parseApiError(res, 'Failed to delete table'));
+      }
     },
     onSuccess: () => {
+      toast.success('Table deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['tables'] });
+      setDeleteTarget(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete table');
+      setDeleteTarget(null);
     },
   });
 
@@ -103,10 +123,10 @@ const AdminTables = () => {
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() => saveMutation.mutate()}
-                disabled={!form.name || !form.capacity || Number(form.capacity) <= 0 || saveMutation.isPending}
+                disabled={!form.name.trim() || !form.capacity || Number(form.capacity) <= 0 || saveMutation.isPending}
                 className="flex-1 h-10 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
               >
-                {editingTableId ? 'Update' : 'Create'}
+                {saveMutation.isPending ? 'Saving...' : editingTableId ? 'Update' : 'Create'}
               </button>
               {editingTableId && (
                 <button
@@ -160,13 +180,13 @@ const AdminTables = () => {
                       <td className="py-2 text-right space-x-2">
                         <button
                           onClick={() => handleEdit(t)}
-                          className="text-xs px-2 py-1 rounded-md border"
+                          className="text-xs px-2 py-1 rounded-md border hover:bg-muted"
                         >
                           Edit
                         </button>
                         <button
-                          onClick={() => deleteMutation.mutate(t.id)}
-                          className="text-xs px-2 py-1 rounded-md border border-destructive text-destructive"
+                          onClick={() => setDeleteTarget({ id: t.id, name: t.name })}
+                          className="text-xs px-2 py-1 rounded-md border border-destructive text-destructive hover:bg-destructive/10"
                         >
                           Delete
                         </button>
@@ -186,9 +206,23 @@ const AdminTables = () => {
           </div>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`Delete Table "${deleteTarget?.name}"?`}
+        description="Are you sure you want to delete this table? If this table has active or past orders, it cannot be deleted."
+        isDeleting={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.id);
+          }
+        }}
+      />
     </AdminSidebar>
   );
 };
 
 export default AdminTables;
-

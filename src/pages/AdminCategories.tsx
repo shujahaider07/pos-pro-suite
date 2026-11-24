@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { parseApiError } from '@/lib/api-error';
 import AdminSidebar from '@/components/pos/AdminSidebar';
+import ConfirmDeleteDialog from '@/components/pos/ConfirmDeleteDialog';
 
 interface ManageCategory {
   id: string;
@@ -33,6 +36,11 @@ const AdminCategories = () => {
     name: '',
   });
   const [editingSubcategory, setEditingSubcategory] = useState<{ id: number; categoryId: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'category' | 'subcategory';
+    id: string | number;
+    name: string;
+  } | null>(null);
 
   const saveCategoryMutation = useMutation({
     mutationFn: async () => {
@@ -40,9 +48,11 @@ const AdminCategories = () => {
         const res = await fetch(`${API_BASE_URL}/api/categories/${editingCategoryId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: categoryForm.name, icon: categoryForm.icon }),
+          body: JSON.stringify({ name: categoryForm.name.trim(), icon: categoryForm.icon }),
         });
-        if (!res.ok) throw new Error('Failed to update category');
+        if (!res.ok) {
+          throw new Error(await parseApiError(res, 'Failed to update category'));
+        }
       } else {
         const slug = categoryForm.name
           .toLowerCase()
@@ -62,18 +72,24 @@ const AdminCategories = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: generatedId,
-            name: categoryForm.name,
+            name: categoryForm.name.trim(),
             icon: categoryForm.icon,
           }),
         });
-        if (!res.ok) throw new Error('Failed to create category');
+        if (!res.ok) {
+          throw new Error(await parseApiError(res, 'Failed to create category'));
+        }
       }
     },
     onSuccess: () => {
+      toast.success(editingCategoryId ? 'Category updated successfully' : 'Category created successfully');
       queryClient.invalidateQueries({ queryKey: ['categories-manage'] });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       setEditingCategoryId(null);
       setCategoryForm({ name: '', icon: '' });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to save category');
     },
   });
 
@@ -82,11 +98,19 @@ const AdminCategories = () => {
       const res = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error('Failed to delete category');
+      if (!res.ok) {
+        throw new Error(await parseApiError(res, 'Failed to delete category'));
+      }
     },
     onSuccess: () => {
+      toast.success('Category deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['categories-manage'] });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
+      setDeleteTarget(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete category');
+      setDeleteTarget(null);
     },
   });
 
@@ -96,23 +120,31 @@ const AdminCategories = () => {
         const res = await fetch(`${API_BASE_URL}/api/categories/subcategories/${editingSubcategory.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: subcategoryForm.name }),
+          body: JSON.stringify({ name: subcategoryForm.name.trim() }),
         });
-        if (!res.ok) throw new Error('Failed to update subcategory');
+        if (!res.ok) {
+          throw new Error(await parseApiError(res, 'Failed to update subcategory'));
+        }
       } else {
         const res = await fetch(`${API_BASE_URL}/api/categories/${subcategoryForm.categoryId}/subcategories`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: subcategoryForm.name }),
+          body: JSON.stringify({ name: subcategoryForm.name.trim() }),
         });
-        if (!res.ok) throw new Error('Failed to create subcategory');
+        if (!res.ok) {
+          throw new Error(await parseApiError(res, 'Failed to create subcategory'));
+        }
       }
     },
     onSuccess: () => {
+      toast.success(editingSubcategory ? 'Subcategory updated successfully' : 'Subcategory created successfully');
       queryClient.invalidateQueries({ queryKey: ['categories-manage'] });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       setEditingSubcategory(null);
       setSubcategoryForm({ categoryId: '', name: '' });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to save subcategory');
     },
   });
 
@@ -121,11 +153,19 @@ const AdminCategories = () => {
       const res = await fetch(`${API_BASE_URL}/api/categories/subcategories/${id}`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error('Failed to delete subcategory');
+      if (!res.ok) {
+        throw new Error(await parseApiError(res, 'Failed to delete subcategory'));
+      }
     },
     onSuccess: () => {
+      toast.success('Subcategory deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['categories-manage'] });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
+      setDeleteTarget(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete subcategory');
+      setDeleteTarget(null);
     },
   });
 
@@ -170,7 +210,7 @@ const AdminCategories = () => {
                 disabled={saveCategoryMutation.isPending || !categoryForm.name.trim()}
                 className="flex-1 h-10 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
               >
-                {editingCategoryId ? 'Update' : 'Create'}
+                {saveCategoryMutation.isPending ? 'Saving...' : editingCategoryId ? 'Update' : 'Create'}
               </button>
               {editingCategoryId && (
                 <button
@@ -209,10 +249,10 @@ const AdminCategories = () => {
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() => saveSubcategoryMutation.mutate()}
-                disabled={saveSubcategoryMutation.isPending || !subcategoryForm.categoryId || !subcategoryForm.name}
+                disabled={saveSubcategoryMutation.isPending || !subcategoryForm.categoryId || !subcategoryForm.name.trim()}
                 className="flex-1 h-10 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"
               >
-                {editingSubcategory ? 'Update' : 'Create'}
+                {saveSubcategoryMutation.isPending ? 'Saving...' : editingSubcategory ? 'Update' : 'Create'}
               </button>
               {editingSubcategory && (
                 <button
@@ -244,13 +284,13 @@ const AdminCategories = () => {
                     <div className="space-x-2">
                       <button
                         onClick={() => handleEditCategory(cat)}
-                        className="text-xs px-2 py-1 rounded-md border"
+                        className="text-xs px-2 py-1 rounded-md border hover:bg-muted"
                       >
                         Edit
                       </button>
                       <button
-                        onClick={() => deleteCategoryMutation.mutate(cat.id)}
-                        className="text-xs px-2 py-1 rounded-md border border-destructive text-destructive"
+                        onClick={() => setDeleteTarget({ type: 'category', id: cat.id, name: cat.name })}
+                        className="text-xs px-2 py-1 rounded-md border border-destructive text-destructive hover:bg-destructive/10"
                       >
                         Delete
                       </button>
@@ -276,8 +316,8 @@ const AdminCategories = () => {
                               Edit
                             </button>
                             <button
-                              onClick={() => deleteSubcategoryMutation.mutate(sub.id)}
-                              className="text-[10px] text-destructive"
+                              onClick={() => setDeleteTarget({ type: 'subcategory', id: sub.id, name: sub.name })}
+                              className="text-[10px] text-destructive hover:font-bold"
                             >
                               ×
                             </button>
@@ -295,6 +335,29 @@ const AdminCategories = () => {
           </div>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={`Delete ${deleteTarget?.type === 'category' ? 'Category' : 'Subcategory'} "${deleteTarget?.name}"?`}
+        description={
+          deleteTarget?.type === 'category'
+            ? 'Are you sure you want to delete this category? If there are products in this category, it cannot be deleted.'
+            : 'Are you sure you want to delete this subcategory? This action cannot be undone.'
+        }
+        isDeleting={deleteCategoryMutation.isPending || deleteSubcategoryMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) {
+            if (deleteTarget.type === 'category') {
+              deleteCategoryMutation.mutate(deleteTarget.id as string);
+            } else {
+              deleteSubcategoryMutation.mutate(deleteTarget.id as number);
+            }
+          }
+        }}
+      />
     </AdminSidebar>
   );
 };
