@@ -62,6 +62,51 @@ const OrderScreen = () => {
   const [isOrderPaid, setIsOrderPaid] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [currentOrderNumber, setCurrentOrderNumber] = useState<string | null>(null);
+  const [kotDataToPrint, setKotDataToPrint] = useState<{
+    items: CartItem[];
+    allItems: CartItem[];
+    kotNumber: number;
+    isAddon: boolean;
+  } | null>(null);
+
+  const getKOTState = (orderId: number | null, tId: number | undefined) => {
+    try {
+      const key = orderId ? `kot_sent_order_${orderId}` : (tId ? `kot_sent_table_${tId}` : null);
+      if (!key) return { kotCount: 0, sentQuantities: {} as Record<number, number> };
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        return JSON.parse(saved) as { kotCount: number; sentQuantities: Record<number, number> };
+      }
+    } catch (e) {
+      console.error('Error reading KOT state', e);
+    }
+    return { kotCount: 0, sentQuantities: {} as Record<number, number> };
+  };
+
+  const saveKOTState = (
+    orderId: number | null,
+    tId: number | undefined,
+    kotCount: number,
+    sentQuantities: Record<number, number>
+  ) => {
+    try {
+      const key = orderId ? `kot_sent_order_${orderId}` : (tId ? `kot_sent_table_${tId}` : null);
+      if (key) {
+        localStorage.setItem(key, JSON.stringify({ kotCount, sentQuantities }));
+      }
+    } catch (e) {
+      console.error('Error saving KOT state', e);
+    }
+  };
+
+  const clearKOTState = (orderId: number | null, tId: number | undefined) => {
+    try {
+      if (orderId) localStorage.removeItem(`kot_sent_order_${orderId}`);
+      if (tId) localStorage.removeItem(`kot_sent_table_${tId}`);
+    } catch (e) {
+      console.error('Error clearing KOT state', e);
+    }
+  };
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
@@ -282,6 +327,7 @@ const OrderScreen = () => {
       }
     },
     onSuccess: () => {
+      clearKOTState(currentOrderId, table?.id);
       queryClient.invalidateQueries({ queryKey: ['tables'] });
       queryClient.invalidateQueries({ queryKey: ['table', tableId] });
       queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
@@ -331,6 +377,7 @@ const OrderScreen = () => {
       }
     },
     onSuccess: () => {
+      clearKOTState(currentOrderId, table?.id);
       setCartItems([]);
       setCurrentOrderId(null);
       setCurrentOrderNumber(null);
@@ -351,7 +398,10 @@ const OrderScreen = () => {
       toast.error('Cart is empty');
       return;
     }
-    if (!currentOrderId && table) {
+
+    let activeId = currentOrderId;
+
+    if (!activeId && table) {
       try {
         const createdBy = userEmail || userName || 'Staff';
         const response = await fetch(`${API_BASE_URL}/api/orders`, {
@@ -368,6 +418,7 @@ const OrderScreen = () => {
         });
         if (response.ok) {
           const data = await response.json();
+          activeId = data.id;
           setCurrentOrderId(data.id);
           if (data.orderNumber) {
             setCurrentOrderNumber(data.orderNumber);
@@ -379,8 +430,75 @@ const OrderScreen = () => {
       } catch (err) {
         console.error('Failed to auto-create order for KOT', err);
       }
+    } else if (activeId && table) {
+      try {
+        await fetch(`${API_BASE_URL}/api/orders/${activeId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: cartItems.map(item => ({
+              productId: item.product.id,
+              quantity: item.quantity,
+            })),
+          }),
+        });
+        queryClient.invalidateQueries({ queryKey: ['tables'] });
+        queryClient.invalidateQueries({ queryKey: ['table', tableId] });
+        queryClient.invalidateQueries({ queryKey: ['activeOrder'] });
+      } catch (err) {
+        console.error('Failed to update order for KOT', err);
+      }
     }
+
+    const kotState = getKOTState(activeId, table?.id);
+    const deltaItems: CartItem[] = [];
+
+    cartItems.forEach(cartItem => {
+      const alreadySent = kotState.sentQuantities[cartItem.product.id] || 0;
+      const remainingToSend = cartItem.quantity - alreadySent;
+      if (remainingToSend > 0) {
+        deltaItems.push({
+          product: cartItem.product,
+          quantity: remainingToSend,
+        });
+      }
+    });
+
+    const isAddon = kotState.kotCount > 0;
+    const nextKotNumber = kotState.kotCount + 1;
+
+    if (deltaItems.length === 0 && isAddon) {
+      toast.info('All items previously sent to kitchen. Showing full KOT reprint.');
+      setKotDataToPrint({
+        items: cartItems,
+        allItems: cartItems,
+        kotNumber: kotState.kotCount,
+        isAddon: true,
+      });
+    } else {
+      setKotDataToPrint({
+        items: deltaItems.length > 0 ? deltaItems : cartItems,
+        allItems: cartItems,
+        kotNumber: nextKotNumber,
+        isAddon: isAddon && deltaItems.length > 0,
+      });
+    }
+
     setShowKOT(true);
+  };
+
+  const handleKOTPrintSuccess = () => {
+    if (!kotDataToPrint) return;
+    const activeId = currentOrderId;
+    const kotState = getKOTState(activeId, table?.id);
+
+    const newSentQuantities: Record<number, number> = { ...kotState.sentQuantities };
+    cartItems.forEach(item => {
+      newSentQuantities[item.product.id] = item.quantity;
+    });
+
+    const newKotCount = kotDataToPrint.kotNumber;
+    saveKOTState(activeId, table?.id, newKotCount, newSentQuantities);
   };
 
   const handlePrintBill = async () => {
@@ -609,13 +727,17 @@ const OrderScreen = () => {
         />
       )}
 
-      {showKOT && (
+      {showKOT && kotDataToPrint && (
         <KOTReceipt
           table={table}
-          items={cartItems}
+          items={kotDataToPrint.items}
+          allItems={kotDataToPrint.allItems}
           orderNumber={currentOrderNumber}
           serverName={userName || 'Staff'}
+          kotNumber={kotDataToPrint.kotNumber}
+          isAddon={kotDataToPrint.isAddon}
           onClose={() => setShowKOT(false)}
+          onPrintSuccess={handleKOTPrintSuccess}
         />
       )}
 

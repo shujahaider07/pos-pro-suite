@@ -12,6 +12,7 @@ import {
   Printer,
   Users,
   Grid3X3,
+  FolderTree,
 } from 'lucide-react';
 import AdminSidebar from '@/components/pos/AdminSidebar';
 import {
@@ -48,13 +49,14 @@ const AdminReports = () => {
   const [tableFilter, setTableFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [staffFilter, setStaffFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [search, setSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<OrderReportItem | null>(null);
-  const [breakdownTab, setBreakdownTab] = useState<'tables' | 'staff'>('tables');
+  const [breakdownTab, setBreakdownTab] = useState<'tables' | 'staff' | 'categories'>('tables');
 
   const { data, isLoading, isError } = useQuery<OrderReportItem[]>({
     queryKey: ['order-history', days],
@@ -63,6 +65,15 @@ const AdminReports = () => {
       if (!response.ok) {
         throw new Error('Failed to load reports');
       }
+      return response.json();
+    },
+  });
+
+  const { data: categories = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/api/categories`);
+      if (!response.ok) return [];
       return response.json();
     },
   });
@@ -82,11 +93,28 @@ const AdminReports = () => {
     [reports]
   );
 
+  const categoryOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    categories.forEach(c => set.set(c.id.toLowerCase(), c.name));
+    reports.forEach(order => {
+      order.items?.forEach(i => {
+        if (i.categoryId && !set.has(i.categoryId.toLowerCase())) {
+          set.set(i.categoryId.toLowerCase(), i.categoryId.charAt(0).toUpperCase() + i.categoryId.slice(1));
+        }
+      });
+    });
+    return Array.from(set.entries()).map(([id, name]) => ({ id, name }));
+  }, [categories, reports]);
+
   const filteredReports = useMemo(() => {
     return reports.filter(order => {
       if (tableFilter !== 'all' && order.tableName !== tableFilter) return false;
       if (statusFilter !== 'all' && order.status !== statusFilter) return false;
       if (staffFilter !== 'all' && (order.createdBy || 'Unknown') !== staffFilter) return false;
+      if (categoryFilter !== 'all') {
+        const hasCategory = order.items?.some(i => i.categoryId?.toLowerCase() === categoryFilter.toLowerCase());
+        if (!hasCategory) return false;
+      }
 
       const orderDate = new Date(order.createdAt);
 
@@ -202,10 +230,41 @@ const AdminReports = () => {
       .slice(0, 5);
   }, [filteredReports]);
 
+  // Category-wise summary
+  const categorySummary = useMemo(() => {
+    const map = new Map<string, { name: string; quantity: number; revenue: number; orders: number }>();
+    for (const order of filteredReports) {
+      if (order.status === 'Cancelled') continue;
+      const orderCats = new Set<string>();
+      for (const item of order.items ?? []) {
+        if (categoryFilter !== 'all' && item.categoryId?.toLowerCase() !== categoryFilter.toLowerCase()) {
+          continue;
+        }
+        const catId = item.categoryId || 'other';
+        const matchedCat = categories.find(c => c.id.toLowerCase() === catId.toLowerCase());
+        const catName = matchedCat ? matchedCat.name : (catId.charAt(0).toUpperCase() + catId.slice(1));
+
+        const existing = map.get(catName) ?? { name: catName, quantity: 0, revenue: 0, orders: 0 };
+        existing.quantity += item.quantity;
+        existing.revenue += item.quantity * item.unitPrice;
+        orderCats.add(catName);
+        map.set(catName, existing);
+      }
+      for (const catName of orderCats) {
+        const entry = map.get(catName);
+        if (entry) entry.orders += 1;
+      }
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+  }, [filteredReports, categories, categoryFilter]);
+
   const hasActiveFilters =
     tableFilter !== 'all' ||
     statusFilter !== 'all' ||
     staffFilter !== 'all' ||
+    categoryFilter !== 'all' ||
     startDate !== '' ||
     endDate !== '' ||
     startTime !== '' ||
@@ -216,6 +275,7 @@ const AdminReports = () => {
     setTableFilter('all');
     setStatusFilter('all');
     setStaffFilter('all');
+    setCategoryFilter('all');
     setStartDate('');
     setEndDate('');
     setStartTime('');
@@ -399,6 +459,21 @@ ${rows}
                 ))}
               </select>
               <select
+                value={categoryFilter}
+                onChange={e => {
+                  setCategoryFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="h-9 rounded-xl border bg-card px-3 text-xs md:text-sm font-medium"
+              >
+                <option value="all">All categories</option>
+                {categoryOptions.map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+              <select
                 value={statusFilter}
                 onChange={e => {
                   setStatusFilter(e.target.value);
@@ -547,7 +622,7 @@ ${rows}
             )}
           </div>
 
-          {/* Table & Staff Summary */}
+          {/* Table, Staff & Category Summary */}
           <div className="bg-card rounded-2xl border p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold text-base">Performance Breakdown</h2>
@@ -572,13 +647,23 @@ ${rows}
                   <Users className="w-3.5 h-3.5" />
                   Staff
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setBreakdownTab('categories')}
+                  className={`px-2.5 py-1 rounded-md flex items-center gap-1 font-medium transition ${
+                    breakdownTab === 'categories' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  <FolderTree className="w-3.5 h-3.5" />
+                  Categories
+                </button>
               </div>
             </div>
-            {(breakdownTab === 'tables' ? tableSummary : staffSummary).length === 0 ? (
+            {(breakdownTab === 'tables' ? tableSummary : breakdownTab === 'staff' ? staffSummary : categorySummary).length === 0 ? (
               <p className="text-xs text-muted-foreground py-4">No data in selected range.</p>
             ) : (
               <div className="space-y-2.5">
-                {(breakdownTab === 'tables' ? tableSummary : staffSummary).map((entry, idx) => (
+                {(breakdownTab === 'tables' ? tableSummary : breakdownTab === 'staff' ? staffSummary : categorySummary).map((entry, idx) => (
                   <div key={entry.name} className="flex items-center justify-between text-sm border-b last:border-0 pb-2 last:pb-0">
                     <div className="flex items-center gap-2.5">
                       <span className="w-5 h-5 rounded-full bg-muted text-[11px] font-semibold flex items-center justify-center">
@@ -588,7 +673,11 @@ ${rows}
                     </div>
                     <div className="text-right">
                       <span className="font-semibold">₨{entry.revenue.toLocaleString()}</span>
-                      <span className="text-xs text-muted-foreground ml-2">({entry.orders} orders)</span>
+                      <span className="text-xs text-muted-foreground ml-2">
+                        {breakdownTab === 'categories'
+                          ? `(${(entry as any).quantity} items sold)`
+                          : `(${entry.orders} orders)`}
+                      </span>
                     </div>
                   </div>
                 ))}
